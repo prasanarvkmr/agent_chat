@@ -1,0 +1,29 @@
+# Google ADK (Agent Development Kit)
+google-adk>=0.1.0
+
+# LiteLLM for multi-provider LLM support
+litellm>=1.0.0
+
+# OpenAI for LLM
+openai>=1.0.0
+
+# Azure Databricks connection
+databricks-sql-connector>=2.9.0
+databricks-sdk>=0.20.0
+
+# Web framework for UI
+fastapi>=0.104.0
+uvicorn>=0.24.0
+
+# Environment management
+python-dotenv>=1.0.0
+
+# Async support
+aiohttp>=3.9.0
+
+# Jinja2 for HTML templates
+jinja2>=3.1.0
+
+# JWT for Microsoft Entra authentication
+PyJWT>=2.8.0
+cryptography>=41.0.0
