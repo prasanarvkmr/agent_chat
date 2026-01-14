@@ -242,6 +242,37 @@ class MetricsCollector:
             "Databricks query duration in seconds"
         )
         
+        # Agent-specific metrics
+        self.agent_initialized = self.counter(
+            "agent_initialized_total",
+            "Number of times the agent was initialized"
+        )
+        self.agent_sessions_created = self.counter(
+            "agent_sessions_created_total",
+            "Total agent sessions created"
+        )
+        self.agent_requests = self.counter(
+            "agent_chat_requests_total",
+            "Total agent chat requests"
+        )
+        self.agent_successes = self.counter(
+            "agent_chat_successes_total",
+            "Total successful agent chat responses"
+        )
+        self.agent_errors = self.counter(
+            "agent_chat_errors_total",
+            "Total agent chat errors"
+        )
+        self.agent_response_time = self.histogram(
+            "agent_response_time_ms",
+            "Agent response time in milliseconds",
+            buckets=[100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000]
+        )
+        self.agent_history_cleared = self.counter(
+            "agent_history_cleared_total",
+            "Number of times agent history was cleared"
+        )
+        
     def counter(self, name: str, description: str = "") -> Counter:
         """Create or get a counter metric."""
         with self._lock:

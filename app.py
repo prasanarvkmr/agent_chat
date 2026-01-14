@@ -14,14 +14,16 @@ import uvicorn
 from agent import agent_runner
 from config import config
 from databricks_client import databricks_client
-from observability import get_logger, setup_logging, metrics, get_tracer
+from observability import get_logger, setup_logging, metrics, get_tracer, get_agent_tracer
 from auth import EntraAuthConfig, get_current_user, User
 from sessions import session_manager
+from metadata_cache import metadata_cache
 
 # Setup logging
 setup_logging(level="INFO")
 logger = get_logger(__name__)
 tracer = get_tracer()
+agent_tracer = get_agent_tracer()
 
 
 # Initialize FastAPI app
@@ -245,6 +247,224 @@ async def get_metrics():
 async def get_full_metrics():
     """Get full metrics export."""
     return metrics.export_metrics()
+
+
+# Client Error Logging Endpoint
+class ClientErrorLog(BaseModel):
+    """Model for client-side error logs."""
+    message: str
+    error: Optional[str] = None
+    stack: Optional[str] = None
+    timestamp: Optional[str] = None
+    url: Optional[str] = None
+    userAgent: Optional[str] = None
+
+
+@app.post("/api/log/error")
+async def log_client_error(error_log: ClientErrorLog, user: User = Depends(get_current_user)):
+    """
+    Log client-side errors to the observability system.
+    This enables tracking of frontend errors alongside backend errors.
+    """
+    logger.error(
+        f"Client Error: {error_log.message}",
+        extra={
+            "extra_data": {
+                "error": error_log.error,
+                "stack": error_log.stack,
+                "url": error_log.url,
+                "user_agent": error_log.userAgent,
+                "user_id": user.id,
+                "timestamp": error_log.timestamp,
+                "source": "frontend"
+            }
+        }
+    )
+    
+    # Record in metrics
+    metrics.request_errors.inc(endpoint="frontend")
+    
+    return {"success": True, "logged": True}
+
+
+# Agent Observability Endpoints
+@app.get("/api/agent/traces")
+async def get_agent_traces():
+    """
+    Get recent agent trace history.
+    Shows how the agent thinks, what tools it calls, and event flow.
+    """
+    traces = agent_tracer.get_trace_history()
+    return {
+        "success": True,
+        "trace_count": len(traces),
+        "traces": traces
+    }
+
+
+@app.get("/api/agent/traces/{trace_id}")
+async def get_agent_trace(trace_id: str):
+    """
+    Get detailed information about a specific agent trace.
+    Includes all events, thinking steps, tool calls, and LLM interactions.
+    """
+    summary = agent_tracer.get_trace_summary(trace_id)
+    if not summary:
+        raise HTTPException(status_code=404, detail="Trace not found")
+    return {"success": True, "trace": summary}
+
+
+@app.get("/api/agent/traces/current")
+async def get_current_agent_trace():
+    """
+    Get the current active agent trace (if any).
+    Useful for real-time monitoring of agent execution.
+    """
+    current_trace = agent_tracer.get_current_trace()
+    if not current_trace:
+        return {"success": True, "active": False, "trace": None}
+    return {
+        "success": True,
+        "active": True,
+        "trace": current_trace.to_dict()
+    }
+
+
+@app.get("/api/agent/thinking/{trace_id}")
+async def get_agent_thinking(trace_id: str):
+    """
+    Get the thinking/reasoning flow for a specific trace.
+    Shows how the agent decided what to do.
+    """
+    summary = agent_tracer.get_trace_summary(trace_id)
+    if not summary:
+        raise HTTPException(status_code=404, detail="Trace not found")
+    return {
+        "success": True,
+        "trace_id": trace_id,
+        "thinking_steps": summary.get("thinking_flow", []),
+        "tool_decisions": summary.get("tool_calls_detail", [])
+    }
+
+
+# Metadata Cache Endpoints
+@app.get("/api/metadata/info")
+async def get_metadata_info():
+    """Get information about the metadata cache status."""
+    return {
+        "success": True,
+        "cache": metadata_cache.get_cache_info()
+    }
+
+
+@app.post("/api/metadata/refresh")
+async def refresh_metadata(force: bool = False):
+    """
+    Refresh the table metadata cache.
+    Use force=true to refresh even if cache is not stale.
+    """
+    logger.info(f"Metadata cache refresh requested (force={force})")
+    result = metadata_cache.refresh_cache(force=force)
+    return {"success": True, "result": result}
+
+
+@app.get("/api/metadata/tables")
+async def get_cached_tables(domain: str = None, schema: str = None):
+    """
+    Get cached tables, optionally filtered by domain or schema.
+    """
+    if domain:
+        tables = metadata_cache.get_tables_by_domain(domain)
+    elif schema:
+        tables = metadata_cache.get_tables_by_schema(schema)
+    else:
+        tables = metadata_cache.get_all_tables()
+    
+    return {
+        "success": True,
+        "count": len(tables),
+        "tables": tables
+    }
+
+
+@app.get("/api/metadata/tables/{table_name}")
+async def get_cached_table(table_name: str, schema: str = None, catalog: str = None):
+    """Get metadata for a specific table."""
+    table = metadata_cache.get_table(table_name, schema, catalog)
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found in cache")
+    return {"success": True, "table": table}
+
+
+@app.get("/api/metadata/search")
+async def search_tables(q: str):
+    """Search tables by name, description, or column names."""
+    if not q or len(q) < 2:
+        raise HTTPException(status_code=400, detail="Query must be at least 2 characters")
+    
+    results = metadata_cache.search_tables(q)
+    return {
+        "success": True,
+        "query": q,
+        "count": len(results),
+        "results": results
+    }
+
+
+@app.get("/api/metadata/summary")
+async def get_metadata_summary():
+    """Get a summary of available tables formatted for display."""
+    return {
+        "success": True,
+        "summary": metadata_cache.get_metadata_summary_for_agent()
+    }
+
+
+# User Role Endpoint (fetches from Databricks)
+@app.get("/api/user/role")
+async def get_user_role(user: User = Depends(get_current_user)):
+    """
+    Get the user's role from Databricks.
+    Roles determine what data domains the user can access.
+    """
+    try:
+        # Query the user_roles table in Databricks
+        query = f"""
+        SELECT role, permissions, domains
+        FROM user_roles 
+        WHERE user_id = '{user.id}' OR email = '{user.email}'
+        LIMIT 1
+        """
+        results = databricks_client.execute_query(query)
+        
+        if results:
+            role_data = results[0]
+            return {
+                "success": True,
+                "user_id": user.id,
+                "role": role_data.get("role", "viewer"),
+                "permissions": role_data.get("permissions", []),
+                "domains": role_data.get("domains", [])
+            }
+        else:
+            # Default role if not found
+            return {
+                "success": True,
+                "user_id": user.id,
+                "role": "viewer",
+                "permissions": ["read"],
+                "domains": ["general"]
+            }
+    except Exception as e:
+        logger.warning(f"Failed to fetch user role: {e}")
+        return {
+            "success": True,
+            "user_id": user.id,
+            "role": "viewer",
+            "permissions": ["read"],
+            "domains": ["general"],
+            "note": "Default role (role lookup failed)"
+        }
 
 
 # Run the application

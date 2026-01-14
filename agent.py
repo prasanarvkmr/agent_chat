@@ -4,12 +4,20 @@ Defines the main agent that handles user queries using Google ADK.
 Supports multiple LLM providers through Kong AI Gateway.
 """
 
+import time
 from google.adk.agents import Agent
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.adk.models.lite_llm import LiteLlm
 from tools import all_tools
 from config import config
+from observability import get_logger, metrics, get_tracer, get_agent_tracer, AgentEventType
+from metadata_cache import metadata_cache
+
+# Setup observability
+logger = get_logger(__name__)
+tracer = get_tracer()
+agent_tracer = get_agent_tracer()
 
 
 # System prompt that instructs the agent how to behave
@@ -85,8 +93,11 @@ def create_agent() -> Agent:
     # Get LLM configuration from config (handles route selection)
     llm_config = config.get_llm_config()
     
-    print(f"[LLM Config] Route: {llm_config['route']}, Model: {llm_config['model']}")
-    print(f"[LLM Config] API Base: {llm_config['api_base']}")
+    logger.info("Creating AI agent", extra={"extra_data": {
+        "route": llm_config['route'],
+        "model": llm_config['model'],
+        "api_base": llm_config['api_base']
+    }})
     
     # Configure the LLM using LiteLLM (routes through Kong AI Gateway)
     # Use 'openai/' prefix to tell LiteLLM to use OpenAI-compatible API format
@@ -100,14 +111,54 @@ def create_agent() -> Agent:
         }
     )
     
+    # Get cached metadata to include in system prompt
+    metadata_summary = ""
+    try:
+        # Ensure cache is fresh
+        metadata_cache.ensure_fresh_cache()
+        metadata_summary = metadata_cache.get_metadata_summary_for_agent()
+        logger.info("Loaded metadata context for agent")
+    except Exception as e:
+        logger.warning(f"Could not load metadata cache: {e}")
+        metadata_summary = "*Metadata cache not available. Use list_tables and describe_table tools to discover data.*"
+    
+    # Build enhanced system prompt with metadata
+    enhanced_prompt = f"""{SYSTEM_PROMPT}
+
+---
+
+## AVAILABLE DATA CONTEXT
+
+The following tables are available in the Databricks catalog. Use this information to:
+1. Quickly identify which tables are relevant to user queries
+2. Understand the data domains and their purposes
+3. Know which columns exist before writing queries
+
+{metadata_summary}
+
+---
+
+When querying data:
+- Use the table metadata above to write accurate queries
+- If a table seems relevant based on its description/tags, query it
+- For health checks, look for tables tagged with: time-series, metrics, errors, status-tracking
+- Always use fully qualified table names: catalog.schema.table_name
+"""
+    
     # Create the agent with tools
     agent = Agent(
         name="databricks_analyst",
         model=llm,
         description="An AI assistant that queries Azure Databricks to answer data questions",
-        instruction=SYSTEM_PROMPT,
+        instruction=enhanced_prompt,
         tools=all_tools
     )
+    
+    logger.info("AI agent created successfully", extra={"extra_data": {
+        "agent_name": "databricks_analyst",
+        "tools_count": len(all_tools)
+    }})
+    metrics.agent_initialized.inc()
     
     return agent
 
@@ -117,22 +168,33 @@ class AgentRunner:
     
     def __init__(self):
         """Initialize the agent runner with session management."""
-        self.agent = create_agent()
-        self.session_service = InMemorySessionService()
-        self.runner = Runner(
-            agent=self.agent,
-            app_name="system_health_analyst",
-            session_service=self.session_service
-        )
-        self.user_id = "default_user"
-        self.session_id = None
-        self._session_created = False
+        logger.info("Initializing AgentRunner")
+        
+        with tracer.span("agent_runner_init"):
+            self.agent = create_agent()
+            self.session_service = InMemorySessionService()
+            self.runner = Runner(
+                agent=self.agent,
+                app_name="system_health_analyst",
+                session_service=self.session_service
+            )
+            self.user_id = "default_user"
+            self.session_id = None
+            self._session_created = False
+        
+        logger.info("AgentRunner initialized successfully")
     
     async def _ensure_session(self):
         """Ensure a session exists, creating one if needed."""
         if not self._session_created or self.session_id is None:
             import uuid
             self.session_id = str(uuid.uuid4())
+            
+            logger.debug("Creating new agent session", extra={"extra_data": {
+                "session_id": self.session_id,
+                "user_id": self.user_id
+            }})
+            
             # Create the session in the session service (async)
             await self.session_service.create_session(
                 app_name="system_health_analyst",
@@ -140,6 +202,7 @@ class AgentRunner:
                 session_id=self.session_id
             )
             self._session_created = True
+            metrics.agent_sessions_created.inc()
     
     async def chat(self, user_message: str) -> str:
         """
@@ -151,9 +214,26 @@ class AgentRunner:
         Returns:
             The agent's response as a string
         """
+        start_time = time.time()
+        
+        logger.info("Processing agent chat request", extra={"extra_data": {
+            "message_length": len(user_message),
+            "message_preview": user_message[:100],
+            "session_id": self.session_id
+        }})
+        
+        metrics.agent_requests.inc()
+        
+        # Start agent trace for detailed observability
+        agent_tracer.start_trace(
+            session_id=self.session_id,
+            user_message=user_message
+        )
+        
         try:
             # Ensure session exists
-            await self._ensure_session()
+            with tracer.span("ensure_session"):
+                await self._ensure_session()
             
             # Create content for the message
             from google.genai import types
@@ -162,33 +242,153 @@ class AgentRunner:
                 parts=[types.Part(text=user_message)]
             )
             
+            # Record LLM request
+            llm_config = config.get_llm_config()
+            agent_tracer.record_llm_call(
+                prompt=user_message,
+                model=llm_config['model'],
+                is_request=True
+            )
+            
             # Run the agent and collect response
             response_text = ""
-            async for event in self.runner.run_async(
-                user_id=self.user_id,
-                session_id=self.session_id,
-                new_message=content
-            ):
-                # Extract text from agent response events
-                if hasattr(event, 'content') and event.content:
-                    if hasattr(event.content, 'parts'):
-                        for part in event.content.parts:
-                            if hasattr(part, 'text') and part.text:
-                                response_text += part.text
-                elif hasattr(event, 'text'):
-                    response_text += event.text
+            event_count = 0
+            function_call_count = 0
+            thinking_detected = False
+            
+            with tracer.span("agent_run", {"session_id": self.session_id}):
+                async for event in self.runner.run_async(
+                    user_id=self.user_id,
+                    session_id=self.session_id,
+                    new_message=content
+                ):
+                    event_count += 1
+                    
+                    # Record the ADK event for detailed tracing
+                    agent_tracer.record_adk_event(
+                        event=event,
+                        event_name=f"ADK Event #{event_count}"
+                    )
+                    
+                    # Extract and analyze event content
+                    if hasattr(event, 'content') and event.content:
+                        if hasattr(event.content, 'parts'):
+                            for part in event.content.parts:
+                                # Capture text responses
+                                if hasattr(part, 'text') and part.text:
+                                    response_text += part.text
+                                
+                                # Capture function/tool calls
+                                if hasattr(part, 'function_call') and part.function_call:
+                                    fc = part.function_call
+                                    function_call_count += 1
+                                    tool_name = getattr(fc, 'name', 'unknown')
+                                    tool_args = dict(getattr(fc, 'args', {})) if hasattr(fc, 'args') else {}
+                                    
+                                    logger.debug(f"Agent calling tool: {tool_name}", extra={"extra_data": {
+                                        "tool_name": tool_name,
+                                        "tool_args_preview": str(tool_args)[:200]
+                                    }})
+                                    
+                                    # Record tool selection thinking
+                                    agent_tracer.record_event(
+                                        event_type=AgentEventType.TOOL_SELECTION,
+                                        name=f"Selected tool: {tool_name}",
+                                        thought=f"Agent decided to use {tool_name} to help answer the query",
+                                        tool_name=tool_name,
+                                        tool_input=tool_args
+                                    )
+                                
+                                # Capture function responses
+                                if hasattr(part, 'function_response') and part.function_response:
+                                    fr = part.function_response
+                                    tool_name = getattr(fr, 'name', 'unknown')
+                                    tool_response = getattr(fr, 'response', None)
+                                    
+                                    logger.debug(f"Tool response received: {tool_name}")
+                                
+                                # Check for thinking/reasoning content
+                                if hasattr(part, 'thought') and part.thought:
+                                    thinking_detected = True
+                                    agent_tracer.record_thinking(
+                                        thought=part.thought,
+                                        reasoning="Agent internal reasoning"
+                                    )
+                    
+                    # Check for model-level thinking
+                    if hasattr(event, 'thinking') and event.thinking:
+                        thinking_detected = True
+                        agent_tracer.record_thinking(
+                            thought=event.thinking,
+                            reasoning="Model thinking step"
+                        )
+                    
+                    # Capture any text directly on event
+                    elif hasattr(event, 'text') and event.text:
+                        response_text += event.text
+            
+            duration_ms = (time.time() - start_time) * 1000
+            
+            # Record LLM response
+            agent_tracer.record_llm_call(
+                completion=response_text[:1000] if response_text else None,
+                model=llm_config['model'],
+                duration_ms=duration_ms,
+                is_request=False
+            )
+            
+            # End the agent trace
+            agent_tracer.end_trace(
+                agent_response=response_text,
+                status="success"
+            )
+            
+            logger.info("Agent chat completed successfully", extra={"extra_data": {
+                "response_length": len(response_text),
+                "event_count": event_count,
+                "function_calls": function_call_count,
+                "thinking_detected": thinking_detected,
+                "duration_ms": round(duration_ms, 2),
+                "session_id": self.session_id
+            }})
+            
+            metrics.agent_response_time.observe(duration_ms)
+            metrics.agent_successes.inc()
             
             return response_text if response_text else "I couldn't generate a response. Please try again."
             
         except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
+            
+            # End trace with error
+            agent_tracer.end_trace(
+                status="error",
+                error=str(e)
+            )
+            
+            logger.error(f"Agent chat failed: {str(e)}", exc_info=True, extra={"extra_data": {
+                "error_type": type(e).__name__,
+                "duration_ms": round(duration_ms, 2),
+                "session_id": self.session_id
+            }})
+            
+            metrics.agent_errors.inc(error_type=type(e).__name__)
+            
             error_msg = f"Error processing your request: {str(e)}"
             return error_msg
     
     async def clear_history(self):
         """Clear the conversation history by creating a new session."""
+        logger.info("Clearing agent conversation history", extra={"extra_data": {
+            "previous_session_id": self.session_id
+        }})
+        
         self._session_created = False
         self.session_id = None
+        
+        metrics.agent_history_cleared.inc()
 
 
 # Create a singleton agent runner
+logger.info("Creating singleton AgentRunner instance")
 agent_runner = AgentRunner()

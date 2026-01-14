@@ -6,6 +6,13 @@ Provides logging, tracing, and metrics capabilities.
 from .logger import get_logger, setup_logging
 from .tracer import Tracer, trace_async, trace_sync, get_tracer
 from .metrics import MetricsCollector, metrics
+from .agent_tracer import (
+    AgentTracer,
+    AgentTrace,
+    AgentEvent,
+    AgentEventType,
+    get_agent_tracer
+)
 
 __all__ = [
     "get_logger",
@@ -15,5 +22,10 @@ __all__ = [
     "trace_async",
     "trace_sync",
     "MetricsCollector",
-    "metrics"
+    "metrics",
+    "AgentTracer",
+    "AgentTrace",
+    "AgentEvent",
+    "AgentEventType",
+    "get_agent_tracer"
 ]
