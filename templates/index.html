@@ -4,1053 +4,593 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>System Health Analyst</title>
-    
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
-            --primary: #1a56db;
-            --primary-hover: #1e40af;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
             --success: #059669;
             --success-bg: #ecfdf5;
-            --success-border: #a7f3d0;
             --warning: #d97706;
             --warning-bg: #fffbeb;
-            --warning-border: #fde68a;
             --error: #dc2626;
             --error-bg: #fef2f2;
-            --error-border: #fecaca;
             --info: #0284c7;
             --info-bg: #f0f9ff;
-            --info-border: #bae6fd;
-            
-            --bg-primary: #ffffff;
-            --bg-secondary: #f9fafb;
-            --bg-tertiary: #f3f4f6;
-            --bg-hover: #e5e7eb;
-            
-            --text-primary: #111827;
-            --text-secondary: #4b5563;
-            --text-muted: #6b7280;
-            --text-light: #9ca3af;
-            
-            --border: #e5e7eb;
-            --border-dark: #d1d5db;
-            
-            --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
-            --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1);
-            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1);
-            
+            --bg-body: #f8fafc;
+            --bg-card: #ffffff;
+            --bg-muted: #f1f5f9;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
             --sidebar-width: 280px;
-            --header-height: 60px;
-            --radius: 8px;
-            --radius-lg: 12px;
+            --header-height: 56px;
         }
-
-        .dark-theme {
-            --bg-primary: #111827;
-            --bg-secondary: #1f2937;
-            --bg-tertiary: #374151;
-            --bg-hover: #4b5563;
-            --text-primary: #f9fafb;
-            --text-secondary: #d1d5db;
-            --text-muted: #9ca3af;
-            --text-light: #6b7280;
-            --border: #374151;
-            --border-dark: #4b5563;
-            --success-bg: rgba(5, 150, 105, 0.15);
-            --warning-bg: rgba(217, 119, 6, 0.15);
-            --error-bg: rgba(220, 38, 38, 0.15);
-            --info-bg: rgba(2, 132, 199, 0.15);
+        .dark { 
+            --bg-body: #0f172a; --bg-card: #1e293b; --bg-muted: #334155;
+            --text-primary: #f1f5f9; --text-secondary: #cbd5e1; --text-muted: #94a3b8;
+            --border: #334155;
+            --success-bg: rgba(5,150,105,0.15); --warning-bg: rgba(217,119,6,0.15);
+            --error-bg: rgba(220,38,38,0.15); --info-bg: rgba(2,132,199,0.15);
         }
-
         * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--bg-secondary);
-            color: var(--text-primary);
-            height: 100vh;
-            display: flex;
-            overflow: hidden;
-            line-height: 1.6;
-            font-size: 14px;
-        }
-
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: var(--border-dark); border-radius: 3px; }
-
+        body { font-family: 'Inter', sans-serif; background: var(--bg-body); color: var(--text-primary); display: flex; height: 100vh; overflow: hidden; }
+        
         /* Sidebar */
-        .sidebar {
-            width: var(--sidebar-width);
-            background: var(--bg-primary);
-            border-right: 1px solid var(--border);
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            flex-shrink: 0;
-        }
-
-        .brand-header {
-            padding: 16px 20px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .brand-logo {
-            width: 40px; height: 40px;
-            background: var(--primary);
-            border-radius: var(--radius);
-            display: flex; align-items: center; justify-content: center;
-            color: white; font-weight: 700; font-size: 14px;
-        }
-
-        .brand-info h1 { font-size: 15px; font-weight: 600; color: var(--text-primary); }
-        .brand-tagline { font-size: 12px; color: var(--text-muted); }
-
-        .new-chat-btn {
-            display: flex; align-items: center; gap: 8px;
-            margin: 16px; padding: 10px 16px;
-            background: var(--primary); color: white;
-            border: none; border-radius: var(--radius);
-            cursor: pointer; font-size: 13px; font-weight: 500;
-            transition: background 0.15s;
-        }
-
-        .new-chat-btn:hover { background: var(--primary-hover); }
-
-        .sessions-header {
-            padding: 8px 20px;
-            font-size: 11px; font-weight: 600;
-            text-transform: uppercase; letter-spacing: 0.5px;
-            color: var(--text-muted);
-        }
-
-        .sessions-list { flex: 1; overflow-y: auto; padding: 0 8px; }
-
-        .session-item {
-            display: flex; align-items: center; gap: 10px;
-            padding: 10px 12px; border-radius: var(--radius);
-            cursor: pointer; transition: background 0.1s; margin-bottom: 2px;
-        }
-
-        .session-item:hover { background: var(--bg-tertiary); }
-        .session-item.active { background: var(--bg-tertiary); }
-
-        .session-icon {
-            width: 32px; height: 32px;
-            background: var(--bg-tertiary); border-radius: 6px;
-            display: flex; align-items: center; justify-content: center;
-            color: var(--text-muted);
-        }
-
-        .session-item.active .session-icon { background: var(--primary); color: white; }
-
+        .sidebar { width: var(--sidebar-width); background: var(--bg-card); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+        .brand { padding: 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+        .brand-icon { width: 36px; height: 36px; background: var(--primary); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; }
+        .brand h1 { font-size: 15px; font-weight: 600; }
+        .brand span { font-size: 11px; color: var(--text-muted); }
+        .new-chat { margin: 12px; padding: 10px 16px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; }
+        .new-chat:hover { background: var(--primary-hover); }
+        .sessions-label { padding: 8px 16px; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
+        .sessions { flex: 1; overflow-y: auto; padding: 0 8px; }
+        .session { padding: 10px 12px; border-radius: 6px; cursor: pointer; margin-bottom: 2px; display: flex; align-items: center; gap: 10px; }
+        .session:hover { background: var(--bg-muted); }
+        .session.active { background: var(--bg-muted); }
+        .session-icon { width: 28px; height: 28px; background: var(--bg-muted); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; color: var(--text-muted); }
+        .session.active .session-icon { background: var(--primary); color: white; }
         .session-info { flex: 1; min-width: 0; }
-        .session-title { font-size: 13px; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .session-meta { font-size: 11px; color: var(--text-muted); }
-
+        .session-title { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .session-time { font-size: 11px; color: var(--text-muted); }
         .session-actions { opacity: 0; display: flex; gap: 2px; }
-        .session-item:hover .session-actions { opacity: 1; }
-
-        .session-action-btn {
-            background: none; border: none; padding: 4px;
-            cursor: pointer; border-radius: 4px;
-            color: var(--text-muted); font-size: 16px;
-        }
-
-        .session-action-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
-        .session-action-btn.delete:hover { color: var(--error); }
-
-        /* User Section */
+        .session:hover .session-actions { opacity: 1; }
+        .session-btn { background: none; border: none; padding: 4px; cursor: pointer; color: var(--text-muted); border-radius: 4px; }
+        .session-btn:hover { background: var(--bg-muted); }
         .user-section { padding: 12px; border-top: 1px solid var(--border); }
-
-        .user-card {
-            display: flex; align-items: center; gap: 10px; padding: 10px;
-            background: var(--bg-tertiary); border-radius: var(--radius);
-        }
-
-        .user-avatar {
-            width: 36px; height: 36px; border-radius: var(--radius);
-            background: var(--primary); color: white;
-            display: flex; align-items: center; justify-content: center;
-            font-weight: 600; font-size: 14px;
-        }
-
-        .user-info { flex: 1; min-width: 0; }
-        .user-name { font-size: 13px; font-weight: 500; color: var(--text-primary); }
-
-        .role-badge {
-            display: inline-block; padding: 2px 6px; border-radius: 4px;
-            font-size: 10px; font-weight: 600; text-transform: uppercase;
-        }
-
-        .role-badge.admin { background: var(--info-bg); color: var(--info); }
-        .role-badge.analyst { background: var(--success-bg); color: var(--success); }
-        .role-badge.viewer { background: var(--bg-tertiary); color: var(--text-muted); }
-
-        .theme-toggle {
-            background: none; border: none; padding: 6px;
-            cursor: pointer; border-radius: 6px; color: var(--text-muted);
-        }
-
-        .theme-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
-
-        /* Main Content */
-        .main-content { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-
-        .header {
-            height: var(--header-height);
-            background: var(--bg-primary);
-            border-bottom: 1px solid var(--border);
-            display: flex; align-items: center;
-            padding: 0 20px; gap: 12px;
-        }
-
-        .menu-btn {
-            display: none;
-            background: none; border: none; padding: 8px;
-            cursor: pointer; border-radius: 6px; color: var(--text-secondary);
-        }
-
-        .header-title { flex: 1; font-size: 16px; font-weight: 600; color: var(--text-primary); }
-
-        .header-actions { display: flex; align-items: center; gap: 8px; }
-
-        .header-btn {
-            background: none; border: none; padding: 8px;
-            cursor: pointer; border-radius: 6px; color: var(--text-muted);
-            display: flex; align-items: center; gap: 6px; font-size: 13px;
-        }
-
-        .header-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
-
-        .status-badge {
-            display: flex; align-items: center; gap: 6px;
-            padding: 6px 12px; border-radius: 20px;
-            font-size: 12px; font-weight: 500;
-        }
-
-        .status-badge.connected { background: var(--success-bg); color: var(--success); }
-        .status-badge.error { background: var(--error-bg); color: var(--error); }
-        .status-badge.connecting { background: var(--bg-tertiary); color: var(--text-muted); }
-
+        .user-card { display: flex; align-items: center; gap: 10px; padding: 10px; background: var(--bg-muted); border-radius: 8px; }
+        .user-avatar { width: 32px; height: 32px; background: var(--primary); border-radius: 6px; color: white; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; }
+        .user-name { font-size: 13px; font-weight: 500; }
+        .role-badge { font-size: 10px; padding: 2px 6px; background: var(--info-bg); color: var(--info); border-radius: 4px; font-weight: 600; text-transform: uppercase; }
+        .theme-btn { background: none; border: none; padding: 6px; cursor: pointer; color: var(--text-muted); border-radius: 6px; margin-left: auto; }
+        .theme-btn:hover { background: var(--bg-card); }
+        
+        /* Main */
+        .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+        .header { height: var(--header-height); background: var(--bg-card); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 20px; gap: 12px; }
+        .header-title { flex: 1; font-size: 15px; font-weight: 600; }
+        .status { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+        .status.ok { background: var(--success-bg); color: var(--success); }
+        .status.err { background: var(--error-bg); color: var(--error); }
         .status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-
-        /* Chat Container */
-        .chat-container { flex: 1; overflow-y: auto; background: var(--bg-secondary); }
-
-        .welcome-section { max-width: 640px; margin: 60px auto; padding: 0 24px; text-align: center; }
-
-        .welcome-icon {
-            width: 64px; height: 64px;
-            background: var(--primary);
-            border-radius: var(--radius-lg);
-            display: flex; align-items: center; justify-content: center;
-            margin: 0 auto 20px; color: white;
-        }
-
-        .welcome-section h1 { font-size: 24px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
-        .welcome-section > p { font-size: 15px; color: var(--text-secondary); margin-bottom: 32px; }
-
-        .quick-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; text-align: left; }
-
-        .quick-action {
-            display: flex; align-items: center; gap: 12px; padding: 14px;
-            background: var(--bg-primary); border: 1px solid var(--border);
-            border-radius: var(--radius); cursor: pointer; transition: all 0.15s;
-        }
-
-        .quick-action:hover { border-color: var(--primary); box-shadow: var(--shadow-sm); }
-
-        .quick-action-icon {
-            width: 36px; height: 36px;
-            background: var(--bg-tertiary); border-radius: 8px;
-            display: flex; align-items: center; justify-content: center;
-            color: var(--primary);
-        }
-
-        .quick-action h3 { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; }
-        .quick-action p { font-size: 12px; color: var(--text-muted); margin: 0; }
-
-        /* Messages */
-        .messages-container { max-width: 800px; margin: 0 auto; padding: 24px; }
-
-        .message { display: flex; gap: 12px; margin-bottom: 24px; animation: fadeIn 0.2s ease; }
-
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-
-        .message-avatar {
-            width: 32px; height: 32px; border-radius: 6px;
-            display: flex; align-items: center; justify-content: center;
-            flex-shrink: 0; font-size: 16px;
-        }
-
-        .message.user .message-avatar { background: var(--primary); color: white; }
-        .message.assistant .message-avatar { background: var(--bg-tertiary); color: var(--text-secondary); }
-        .message.error .message-avatar { background: var(--error-bg); color: var(--error); }
-
-        .message-content { flex: 1; min-width: 0; }
-
-        .message-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-        .message-sender { font-size: 13px; font-weight: 600; color: var(--text-primary); }
-        .message-time { font-size: 11px; color: var(--text-light); }
-
-        .message-body {
-            background: var(--bg-primary);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 16px;
-            font-size: 14px;
-            line-height: 1.7;
-            color: var(--text-secondary);
-        }
-
-        .message.user .message-body { background: var(--primary); color: white; border-color: var(--primary); }
-        .message.error .message-body { background: var(--error-bg); border-color: var(--error-border); color: var(--error); }
-
-        /* Response Formatting */
-        .message-body h2 {
-            font-size: 16px; font-weight: 700; color: var(--text-primary);
-            margin: 20px 0 12px 0; padding-bottom: 8px;
-            border-bottom: 2px solid var(--border);
-        }
-
-        .message-body h2:first-child { margin-top: 0; }
-
-        .message-body h3 {
-            font-size: 14px; font-weight: 600; color: var(--text-primary);
-            margin: 16px 0 8px 0;
-        }
-
-        .message-body p { margin: 10px 0; }
-
-        .message-body ul, .message-body ol {
-            margin: 12px 0; padding-left: 0; list-style: none;
-        }
-
-        .message-body li {
-            position: relative; padding: 8px 0 8px 24px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .message-body li:last-child { border-bottom: none; }
-
-        .message-body li::before {
-            content: '';
-            position: absolute; left: 0; top: 14px;
-            width: 6px; height: 6px;
-            background: var(--primary);
-            border-radius: 50%;
-        }
-
-        .message-body pre {
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            padding: 14px; border-radius: 6px;
-            overflow-x: auto; margin: 14px 0;
-            font-size: 13px; font-family: 'JetBrains Mono', 'Fira Code', monospace;
-        }
-
-        .message-body code {
-            background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px;
-            font-size: 12px; font-family: 'JetBrains Mono', 'Fira Code', monospace;
-        }
-
-        .message-body pre code { background: none; padding: 0; }
-        .message-body strong { font-weight: 600; color: var(--text-primary); }
-
-        /* Stats Cards */
-        .stat-card {
-            display: inline-flex; align-items: center; gap: 10px;
-            padding: 12px 16px; border-radius: var(--radius);
-            margin: 8px 8px 8px 0; font-weight: 500;
-        }
-
-        .stat-card.healthy { background: var(--success-bg); color: var(--success); border: 1px solid var(--success-border); }
-        .stat-card.warning { background: var(--warning-bg); color: var(--warning); border: 1px solid var(--warning-border); }
-        .stat-card.critical { background: var(--error-bg); color: var(--error); border: 1px solid var(--error-border); }
-        .stat-card.info { background: var(--info-bg); color: var(--info); border: 1px solid var(--info-border); }
-
-        .stat-card .stat-icon { font-size: 20px; }
-        .stat-card .stat-label { font-size: 12px; font-weight: 400; opacity: 0.8; }
-        .stat-card .stat-value { font-size: 18px; font-weight: 700; }
-
-        /* KPI Grid */
-        .kpi-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 12px; margin: 16px 0;
-        }
-
-        .kpi-item {
-            background: var(--bg-tertiary); padding: 14px;
-            border-radius: var(--radius); text-align: center;
-        }
-
-        .kpi-value { font-size: 24px; font-weight: 700; color: var(--text-primary); }
+        .header-btn { background: none; border: none; padding: 8px; cursor: pointer; color: var(--text-muted); border-radius: 6px; display: flex; align-items: center; gap: 6px; font-size: 13px; }
+        .header-btn:hover { background: var(--bg-muted); color: var(--text-primary); }
+        
+        /* Chat */
+        .chat { flex: 1; overflow-y: auto; padding: 24px; background: var(--bg-body); }
+        .messages { max-width: 900px; margin: 0 auto; }
+        .welcome { text-align: center; padding: 60px 20px; max-width: 600px; margin: 0 auto; }
+        .welcome-icon { width: 56px; height: 56px; background: var(--primary); border-radius: 12px; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center; color: white; }
+        .welcome h2 { font-size: 22px; margin-bottom: 8px; }
+        .welcome p { color: var(--text-secondary); margin-bottom: 32px; }
+        .quick-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        .quick-btn { text-align: left; padding: 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: border-color 0.15s; }
+        .quick-btn:hover { border-color: var(--primary); }
+        .quick-btn h4 { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+        .quick-btn p { font-size: 12px; color: var(--text-muted); margin: 0; }
+        
+        /* Message */
+        .msg { display: flex; gap: 12px; margin-bottom: 20px; }
+        .msg-avatar { width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 16px; }
+        .msg.user .msg-avatar { background: var(--primary); color: white; }
+        .msg.assistant .msg-avatar { background: var(--bg-muted); color: var(--text-secondary); }
+        .msg-content { flex: 1; min-width: 0; }
+        .msg-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .msg-name { font-size: 13px; font-weight: 600; }
+        .msg-time { font-size: 11px; color: var(--text-muted); }
+        .msg-body { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; font-size: 14px; line-height: 1.6; }
+        .msg.user .msg-body { background: var(--primary); color: white; border-color: var(--primary); }
+        
+        /* Report Formatting */
+        .report { line-height: 1.6; }
+        .report-header { display: flex; align-items: center; gap: 12px; padding-bottom: 12px; border-bottom: 2px solid var(--border); margin-bottom: 16px; }
+        .report-header h2 { font-size: 18px; font-weight: 700; margin: 0; flex: 1; }
+        .report-timestamp { font-size: 12px; color: var(--text-muted); }
+        
+        /* KPI Cards */
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 16px 0; }
+        .kpi { background: var(--bg-muted); border-radius: 8px; padding: 16px; text-align: center; }
+        .kpi-value { font-size: 28px; font-weight: 700; color: var(--text-primary); line-height: 1; }
         .kpi-label { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
-
-        /* Error Alert */
-        .error-alert {
-            display: flex; align-items: flex-start; gap: 12px;
-            padding: 14px 16px; border-radius: var(--radius);
-            background: var(--error-bg); border: 1px solid var(--error-border);
-            margin: 12px 0;
-        }
-
-        .error-alert .error-icon { color: var(--error); font-size: 20px; flex-shrink: 0; }
-        .error-alert .error-title { font-weight: 600; color: var(--error); margin-bottom: 4px; }
-        .error-alert .error-message { font-size: 13px; color: var(--text-secondary); }
-
-        /* Typing Indicator */
-        .typing-indicator {
-            display: flex; align-items: center; gap: 4px;
-            padding: 12px 16px; background: var(--bg-primary);
-            border: 1px solid var(--border);
-            border-radius: var(--radius); width: fit-content;
-        }
-
-        .typing-indicator span {
-            width: 6px; height: 6px; background: var(--text-muted);
-            border-radius: 50%; animation: typing 1.4s infinite;
-        }
-
-        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
-        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
-
-        @keyframes typing { 0%, 60%, 100% { opacity: 0.3; } 30% { opacity: 1; } }
-
-        /* Input Area */
-        .input-area {
-            background: var(--bg-primary);
-            border-top: 1px solid var(--border);
-            padding: 16px 24px;
-        }
-
-        .input-wrapper { max-width: 800px; margin: 0 auto; }
-
-        .input-container {
-            display: flex; align-items: flex-end; gap: 10px;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
-            padding: 10px 10px 10px 16px;
-            transition: border-color 0.15s;
-        }
-
-        .input-container:focus-within { border-color: var(--primary); }
-
-        .input-container textarea {
-            flex: 1; border: none; background: transparent;
-            font-family: inherit; font-size: 14px;
-            resize: none; outline: none;
-            min-height: 24px; max-height: 150px;
-            line-height: 1.5; padding: 4px 0;
-            color: var(--text-primary);
-        }
-
-        .input-container textarea::placeholder { color: var(--text-light); }
-
-        .send-btn {
-            width: 40px; height: 40px; border-radius: var(--radius);
-            border: none; background: var(--primary); color: white;
-            cursor: pointer; display: flex; align-items: center; justify-content: center;
-            transition: background 0.15s; flex-shrink: 0;
-        }
-
-        .send-btn:hover:not(:disabled) { background: var(--primary-hover); }
+        .kpi.success .kpi-value { color: var(--success); }
+        .kpi.warning .kpi-value { color: var(--warning); }
+        .kpi.error .kpi-value { color: var(--error); }
+        
+        /* Status Badges */
+        .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: 600; margin: 4px 4px 4px 0; }
+        .status-badge.healthy { background: var(--success-bg); color: var(--success); }
+        .status-badge.warning { background: var(--warning-bg); color: var(--warning); }
+        .status-badge.critical { background: var(--error-bg); color: var(--error); }
+        .status-badge .material-icons-outlined { font-size: 18px; }
+        
+        /* Section */
+        .section { margin: 20px 0; }
+        .section-title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .section-title .material-icons-outlined { font-size: 18px; color: var(--primary); }
+        
+        /* Data Table */
+        .data-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+        .data-table th { text-align: left; padding: 10px 12px; background: var(--bg-muted); font-weight: 600; border-bottom: 2px solid var(--border); }
+        .data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+        .data-table tr:hover td { background: var(--bg-muted); }
+        .data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+        
+        /* Bullet List */
+        .bullet-list { margin: 12px 0; padding: 0; list-style: none; }
+        .bullet-list li { padding: 10px 0 10px 24px; border-bottom: 1px solid var(--border); position: relative; }
+        .bullet-list li:last-child { border-bottom: none; }
+        .bullet-list li::before { content: ''; position: absolute; left: 0; top: 16px; width: 8px; height: 8px; background: var(--primary); border-radius: 50%; }
+        
+        /* Chart Container */
+        .chart-container { background: var(--bg-muted); border-radius: 8px; padding: 16px; margin: 16px 0; }
+        .chart-title { font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+        .chart-canvas { max-height: 250px; }
+        
+        /* Alert Box */
+        .alert { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 8px; margin: 12px 0; }
+        .alert.error { background: var(--error-bg); }
+        .alert.warning { background: var(--warning-bg); }
+        .alert.success { background: var(--success-bg); }
+        .alert.info { background: var(--info-bg); }
+        .alert-icon { font-size: 20px; flex-shrink: 0; }
+        .alert.error .alert-icon { color: var(--error); }
+        .alert.warning .alert-icon { color: var(--warning); }
+        .alert.success .alert-icon { color: var(--success); }
+        .alert.info .alert-icon { color: var(--info); }
+        .alert-content { flex: 1; }
+        .alert-title { font-weight: 600; font-size: 14px; margin-bottom: 2px; }
+        .alert-text { font-size: 13px; color: var(--text-secondary); }
+        
+        /* Code Block */
+        .code-block { background: var(--bg-muted); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin: 12px 0; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+        code { background: var(--bg-muted); padding: 2px 6px; border-radius: 4px; font-size: 12px; font-family: 'JetBrains Mono', monospace; }
+        
+        /* Typing */
+        .typing { display: flex; gap: 4px; padding: 16px; }
+        .typing span { width: 6px; height: 6px; background: var(--text-muted); border-radius: 50%; animation: bounce 1.4s infinite; }
+        .typing span:nth-child(2) { animation-delay: 0.2s; }
+        .typing span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes bounce { 0%,60%,100% { opacity: 0.3; } 30% { opacity: 1; } }
+        
+        /* Input */
+        .input-area { background: var(--bg-card); border-top: 1px solid var(--border); padding: 16px 24px; }
+        .input-wrap { max-width: 900px; margin: 0 auto; display: flex; gap: 10px; background: var(--bg-muted); border-radius: 10px; padding: 10px 10px 10px 16px; }
+        .input-wrap:focus-within { box-shadow: 0 0 0 2px var(--primary); }
+        .input-wrap textarea { flex: 1; border: none; background: transparent; resize: none; outline: none; font-family: inherit; font-size: 14px; min-height: 24px; max-height: 150px; color: var(--text-primary); }
+        .input-wrap textarea::placeholder { color: var(--text-muted); }
+        .send-btn { width: 40px; height: 40px; border-radius: 8px; border: none; background: var(--primary); color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .send-btn:hover { background: var(--primary-hover); }
         .send-btn:disabled { background: var(--border); cursor: not-allowed; }
-
-        .input-hint { font-size: 11px; color: var(--text-light); margin-top: 8px; text-align: center; }
-
+        .input-hint { text-align: center; font-size: 11px; color: var(--text-muted); margin-top: 8px; }
+        
         /* Dialog */
-        .dialog-overlay {
-            position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-            display: none; align-items: center; justify-content: center; z-index: 100;
-        }
-
+        .dialog-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 100; }
         .dialog-overlay.show { display: flex; }
-
-        .dialog {
-            background: var(--bg-primary); border-radius: var(--radius-lg);
-            box-shadow: var(--shadow-lg); width: 400px; max-width: 90%;
-        }
-
-        .dialog-header { padding: 16px 20px; border-bottom: 1px solid var(--border); }
-        .dialog-title { font-size: 15px; font-weight: 600; }
-        .dialog-content { padding: 20px; }
-
-        .dialog-input {
-            width: 100%; padding: 10px 12px;
-            background: var(--bg-secondary); border: 1px solid var(--border);
-            border-radius: var(--radius); font-size: 14px;
-            color: var(--text-primary); outline: none;
-        }
-
-        .dialog-input:focus { border-color: var(--primary); }
-
-        .dialog-actions { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
-
-        .btn {
-            padding: 8px 16px; border: none; border-radius: var(--radius);
-            cursor: pointer; font-size: 13px; font-weight: 500;
-        }
-
+        .dialog { background: var(--bg-card); border-radius: 12px; width: 400px; max-width: 90%; }
+        .dialog-header { padding: 16px 20px; border-bottom: 1px solid var(--border); font-weight: 600; }
+        .dialog-body { padding: 20px; }
+        .dialog-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; background: var(--bg-muted); color: var(--text-primary); }
+        .dialog-input:focus { outline: none; border-color: var(--primary); }
+        .dialog-footer { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+        .btn { padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; }
         .btn-ghost { background: transparent; color: var(--text-secondary); }
-        .btn-ghost:hover { background: var(--bg-tertiary); }
+        .btn-ghost:hover { background: var(--bg-muted); }
         .btn-primary { background: var(--primary); color: white; }
         .btn-primary:hover { background: var(--primary-hover); }
-
+        
         /* Toast */
-        .toast {
-            position: fixed; bottom: 20px; left: 50%;
-            transform: translateX(-50%) translateY(80px);
-            background: var(--bg-primary); color: var(--text-primary);
-            padding: 12px 20px; border-radius: var(--radius);
-            box-shadow: var(--shadow-lg); border: 1px solid var(--border);
-            display: flex; align-items: center; gap: 10px;
-            opacity: 0; transition: all 0.3s; z-index: 200;
-        }
-
+        .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--bg-card); border: 1px solid var(--border); padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 10px; opacity: 0; transition: all 0.3s; z-index: 200; }
         .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
         .toast.success { border-left: 4px solid var(--success); }
         .toast.error { border-left: 4px solid var(--error); }
-        .toast.info { border-left: 4px solid var(--info); }
-
-        .empty-state { padding: 40px 20px; text-align: center; color: var(--text-muted); }
-        .empty-state .material-icons-outlined { font-size: 40px; opacity: 0.4; margin-bottom: 8px; }
-
+        
         @media (max-width: 768px) {
-            .sidebar { position: fixed; left: -280px; z-index: 50; transition: left 0.3s; }
-            .sidebar.open { left: 0; box-shadow: var(--shadow-lg); }
-            .menu-btn { display: block; }
-            .quick-actions { grid-template-columns: 1fr; }
+            .sidebar { display: none; }
+            .quick-grid { grid-template-columns: 1fr; }
+            .kpi-grid { grid-template-columns: repeat(2, 1fr); }
         }
     </style>
 </head>
 <body>
-    <aside class="sidebar" id="sidebar">
-        <div class="brand-header">
-            <div class="brand-logo">SH</div>
-            <div class="brand-info">
-                <h1>System Health</h1>
-                <div class="brand-tagline">Analytics Platform</div>
-            </div>
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-icon">SH</div>
+            <div><h1>System Health</h1><span>Analytics Platform</span></div>
         </div>
-        
-        <button class="new-chat-btn" onclick="createNewSession()">
-            <span class="material-icons-outlined">add</span>
-            New Conversation
-        </button>
-        
-        <div class="sessions-header">Recent</div>
-        
-        <div class="sessions-list" id="sessionsList">
-            <div class="empty-state">
-                <span class="material-icons-outlined">chat_bubble_outline</span>
-                <p>No conversations</p>
-            </div>
-        </div>
-        
+        <button class="new-chat" onclick="newSession()"><span class="material-icons-outlined">add</span>New Chat</button>
+        <div class="sessions-label">Recent</div>
+        <div class="sessions" id="sessions"></div>
         <div class="user-section">
             <div class="user-card">
-                <div class="user-avatar" id="userAvatar">G</div>
-                <div class="user-info">
-                    <div class="user-name" id="userName">Guest</div>
-                    <span class="role-badge viewer" id="userRoleBadge">Viewer</span>
-                </div>
-                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
-                    <span class="material-icons-outlined" id="themeIcon">dark_mode</span>
-                </button>
+                <div class="user-avatar" id="avatar">G</div>
+                <div><div class="user-name" id="userName">Guest</div><span class="role-badge" id="roleBadge">Viewer</span></div>
+                <button class="theme-btn" onclick="toggleTheme()"><span class="material-icons-outlined" id="themeIcon">dark_mode</span></button>
             </div>
         </div>
     </aside>
-
-    <main class="main-content">
+    
+    <main class="main">
         <header class="header">
-            <button class="menu-btn" onclick="toggleSidebar()">
-                <span class="material-icons-outlined">menu</span>
-            </button>
             <h1 class="header-title">System Health Analyst</h1>
-            
-            <div class="header-actions">
-                <button class="header-btn" onclick="refreshMetadata()" title="Refresh metadata">
-                    <span class="material-icons-outlined">sync</span>
-                    <span>Refresh</span>
-                </button>
-                <div class="status-badge connecting" id="statusBadge">
-                    <span class="status-dot"></span>
-                    <span id="statusText">Connecting</span>
-                </div>
-            </div>
+            <button class="header-btn" onclick="refreshMeta()"><span class="material-icons-outlined">sync</span>Refresh</button>
+            <div class="status ok" id="status"><span class="status-dot"></span><span id="statusText">Connected</span></div>
         </header>
-
-        <div class="chat-container" id="chatContainer">
-            <div class="welcome-section" id="welcomeSection">
-                <div class="welcome-icon">
-                    <span class="material-icons-outlined" style="font-size: 32px;">monitoring</span>
-                </div>
-                <h1>System Health Analyst</h1>
-                <p>Ask questions about your system metrics, performance data, and health status.</p>
-                
-                <div class="quick-actions">
-                    <button class="quick-action" onclick="sendSuggestion('What is the current system health status?')">
-                        <div class="quick-action-icon"><span class="material-icons-outlined">favorite</span></div>
-                        <div><h3>Health Status</h3><p>Overall system health</p></div>
-                    </button>
-                    <button class="quick-action" onclick="sendSuggestion('Show me the key performance metrics')">
-                        <div class="quick-action-icon"><span class="material-icons-outlined">speed</span></div>
-                        <div><h3>Performance</h3><p>Key metrics & KPIs</p></div>
-                    </button>
-                    <button class="quick-action" onclick="sendSuggestion('Are there any active alerts or issues?')">
-                        <div class="quick-action-icon"><span class="material-icons-outlined">notification_important</span></div>
-                        <div><h3>Alerts</h3><p>Active issues</p></div>
-                    </button>
-                    <button class="quick-action" onclick="sendSuggestion('What improvements do you recommend?')">
-                        <div class="quick-action-icon"><span class="material-icons-outlined">tips_and_updates</span></div>
-                        <div><h3>Insights</h3><p>Recommendations</p></div>
-                    </button>
+        
+        <div class="chat" id="chat">
+            <div class="welcome" id="welcome">
+                <div class="welcome-icon"><span class="material-icons-outlined">monitoring</span></div>
+                <h2>System Health Analyst</h2>
+                <p>Ask about system health, metrics, and performance data.</p>
+                <div class="quick-grid">
+                    <button class="quick-btn" onclick="send('What is the current system health status?')"><h4>Health Status</h4><p>Overall system health</p></button>
+                    <button class="quick-btn" onclick="send('Show me the key performance metrics')"><h4>Key Metrics</h4><p>Performance KPIs</p></button>
+                    <button class="quick-btn" onclick="send('Are there any active alerts or issues?')"><h4>Active Alerts</h4><p>Current issues</p></button>
+                    <button class="quick-btn" onclick="send('What improvements do you recommend?')"><h4>Recommendations</h4><p>Actionable insights</p></button>
                 </div>
             </div>
         </div>
-
+        
         <div class="input-area">
-            <div class="input-wrapper">
-                <div class="input-container">
-                    <textarea id="messageInput" placeholder="Ask about system health, metrics, or data..." rows="1" onkeydown="handleKeyDown(event)" oninput="autoResize(this)"></textarea>
-                    <button class="send-btn" onclick="sendMessage()" id="sendBtn">
-                        <span class="material-icons-outlined">send</span>
-                    </button>
-                </div>
-                <p class="input-hint">Press Enter to send • Shift+Enter for new line</p>
+            <div class="input-wrap">
+                <textarea id="input" placeholder="Ask about system health..." rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}" oninput="autoHeight(this)"></textarea>
+                <button class="send-btn" id="sendBtn" onclick="sendMsg()"><span class="material-icons-outlined">send</span></button>
             </div>
+            <div class="input-hint">Enter to send · Shift+Enter for new line</div>
         </div>
     </main>
-
-    <div class="dialog-overlay" id="renameDialog">
+    
+    <div class="dialog-overlay" id="dialog">
         <div class="dialog">
-            <div class="dialog-header"><div class="dialog-title">Rename Conversation</div></div>
-            <div class="dialog-content"><input type="text" class="dialog-input" id="renameInput" placeholder="Enter name"></div>
-            <div class="dialog-actions">
-                <button class="btn btn-ghost" onclick="closeRenameDialog()">Cancel</button>
-                <button class="btn btn-primary" onclick="confirmRename()">Rename</button>
-            </div>
+            <div class="dialog-header">Rename Chat</div>
+            <div class="dialog-body"><input class="dialog-input" id="dialogInput" placeholder="Enter name"></div>
+            <div class="dialog-footer"><button class="btn btn-ghost" onclick="closeDialog()">Cancel</button><button class="btn btn-primary" onclick="confirmRename()">Rename</button></div>
         </div>
     </div>
+    
+    <div class="toast" id="toast"><span class="material-icons-outlined" id="toastIcon">check_circle</span><span id="toastMsg"></span></div>
 
-    <div class="toast" id="toast">
-        <span class="material-icons-outlined" id="toastIcon">check_circle</span>
-        <span id="toastMessage"></span>
-    </div>
+<script>
+let sessionId = null, sessions = [], renameId = null, charts = [];
 
-    <script>
-        let currentSessionId = null;
-        let sessions = [];
-        let currentUser = null;
-        let userRole = 'viewer';
-        let isDarkTheme = false;
+document.addEventListener('DOMContentLoaded', async () => {
+    loadTheme();
+    await Promise.all([checkAuth(), checkHealth()]);
+    await loadSessions();
+});
 
-        document.addEventListener('DOMContentLoaded', async () => {
-            loadThemePreference();
-            await Promise.all([checkAuth(), checkHealth(), loadUserRole()]);
-            await loadSessions();
-        });
+function loadTheme() {
+    if (localStorage.getItem('theme') === 'dark') {
+        document.body.classList.add('dark');
+        document.getElementById('themeIcon').textContent = 'light_mode';
+    }
+}
 
-        function loadThemePreference() {
-            const saved = localStorage.getItem('theme');
-            if (saved === 'dark') {
-                isDarkTheme = true;
-                document.body.classList.add('dark-theme');
-                document.getElementById('themeIcon').textContent = 'light_mode';
-            }
+function toggleTheme() {
+    document.body.classList.toggle('dark');
+    const dark = document.body.classList.contains('dark');
+    document.getElementById('themeIcon').textContent = dark ? 'light_mode' : 'dark_mode';
+    localStorage.setItem('theme', dark ? 'dark' : 'light');
+}
+
+async function checkAuth() {
+    try {
+        const r = await fetch('/api/auth/status');
+        const d = await r.json();
+        if (d.user?.is_authenticated) {
+            document.getElementById('avatar').textContent = d.user.name[0].toUpperCase();
+            document.getElementById('userName').textContent = d.user.name;
         }
+    } catch(e) { console.error(e); }
+    try {
+        const r = await fetch('/api/user/role');
+        const d = await r.json();
+        if (d.success) document.getElementById('roleBadge').textContent = d.role;
+    } catch(e) {}
+}
 
-        function toggleTheme() {
-            isDarkTheme = !isDarkTheme;
-            document.body.classList.toggle('dark-theme');
-            document.getElementById('themeIcon').textContent = isDarkTheme ? 'light_mode' : 'dark_mode';
-            localStorage.setItem('theme', isDarkTheme ? 'dark' : 'light');
+async function checkHealth() {
+    try {
+        const r = await fetch('/api/health');
+        const d = await r.json();
+        const s = document.getElementById('status');
+        document.getElementById('statusText').textContent = d.databricks_connected ? 'Connected' : 'Disconnected';
+        s.className = 'status ' + (d.databricks_connected ? 'ok' : 'err');
+    } catch(e) {
+        document.getElementById('statusText').textContent = 'Offline';
+        document.getElementById('status').className = 'status err';
+    }
+}
+
+async function refreshMeta() {
+    toast('Refreshing...', 'info');
+    try {
+        const r = await fetch('/api/metadata/refresh?force=true', { method: 'POST' });
+        const d = await r.json();
+        toast(d.result?.refreshed ? `Refreshed ${d.result.tables_count} tables` : 'Already fresh', 'success');
+    } catch(e) { toast('Refresh failed', 'error'); }
+}
+
+async function loadSessions() {
+    try {
+        const r = await fetch('/api/sessions');
+        const d = await r.json();
+        sessions = d.sessions || [];
+        renderSessions();
+        if (sessions.length) selectSession(sessions[0].id);
+    } catch(e) { console.error(e); }
+}
+
+function renderSessions() {
+    const c = document.getElementById('sessions');
+    if (!sessions.length) { c.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted)">No chats yet</div>'; return; }
+    c.innerHTML = sessions.map(s => `
+        <div class="session ${s.id===sessionId?'active':''}" onclick="selectSession('${s.id}')">
+            <div class="session-icon"><span class="material-icons-outlined" style="font-size:14px">chat</span></div>
+            <div class="session-info"><div class="session-title">${esc(s.title)}</div><div class="session-time">${fmtDate(s.updated_at)}</div></div>
+            <div class="session-actions">
+                <button class="session-btn" onclick="event.stopPropagation();openRename('${s.id}','${esc(s.title)}')"><span class="material-icons-outlined" style="font-size:14px">edit</span></button>
+                <button class="session-btn" onclick="event.stopPropagation();delSession('${s.id}')"><span class="material-icons-outlined" style="font-size:14px">delete</span></button>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function newSession() {
+    try {
+        const r = await fetch('/api/sessions', { method: 'POST' });
+        const d = await r.json();
+        if (d.session) { sessions.unshift(d.session); sessionId = d.session.id; renderSessions(); clearChat(); }
+    } catch(e) { toast('Failed', 'error'); }
+}
+
+async function selectSession(id) {
+    sessionId = id;
+    renderSessions();
+    try {
+        const r = await fetch(`/api/sessions/${id}/messages`);
+        const d = await r.json();
+        renderMsgs(d.messages || []);
+    } catch(e) {}
+}
+
+async function delSession(id) {
+    if (!confirm('Delete this chat?')) return;
+    try {
+        await fetch(`/api/sessions/${id}`, { method: 'DELETE' });
+        sessions = sessions.filter(s => s.id !== id);
+        renderSessions();
+        if (sessionId === id) { sessionId = null; sessions.length ? selectSession(sessions[0].id) : clearChat(); }
+        toast('Deleted', 'success');
+    } catch(e) { toast('Failed', 'error'); }
+}
+
+function openRename(id, title) { renameId = id; document.getElementById('dialogInput').value = title; document.getElementById('dialog').classList.add('show'); }
+function closeDialog() { document.getElementById('dialog').classList.remove('show'); renameId = null; }
+async function confirmRename() {
+    const t = document.getElementById('dialogInput').value.trim();
+    if (!t || !renameId) return;
+    try {
+        await fetch(`/api/sessions/${renameId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: t }) });
+        const s = sessions.find(x => x.id === renameId);
+        if (s) s.title = t;
+        renderSessions();
+        closeDialog();
+        toast('Renamed', 'success');
+    } catch(e) { toast('Failed', 'error'); }
+}
+
+function clearChat() {
+    destroyCharts();
+    document.getElementById('chat').innerHTML = `<div class="welcome" id="welcome"><div class="welcome-icon"><span class="material-icons-outlined">monitoring</span></div><h2>System Health Analyst</h2><p>Ask about system health, metrics, and performance data.</p><div class="quick-grid"><button class="quick-btn" onclick="send('What is the current system health status?')"><h4>Health Status</h4><p>Overall system health</p></button><button class="quick-btn" onclick="send('Show me the key performance metrics')"><h4>Key Metrics</h4><p>Performance KPIs</p></button><button class="quick-btn" onclick="send('Are there any active alerts or issues?')"><h4>Active Alerts</h4><p>Current issues</p></button><button class="quick-btn" onclick="send('What improvements do you recommend?')"><h4>Recommendations</h4><p>Actionable insights</p></button></div></div>`;
+}
+
+function renderMsgs(msgs) {
+    destroyCharts();
+    const c = document.getElementById('chat');
+    if (!msgs.length) { clearChat(); return; }
+    c.innerHTML = '<div class="messages">' + msgs.map(m => msgHTML(m.role, m.content, m.timestamp)).join('') + '</div>';
+    c.scrollTop = c.scrollHeight;
+    initCharts();
+}
+
+function msgHTML(role, content, ts) {
+    const icon = role === 'user' ? 'person' : 'psychology';
+    const name = role === 'user' ? 'You' : 'AI Assistant';
+    const time = ts ? fmtTime(ts) : 'Now';
+    const body = role === 'user' ? esc(content) : formatReport(content);
+    return `<div class="msg ${role}"><div class="msg-avatar"><span class="material-icons-outlined">${icon}</span></div><div class="msg-content"><div class="msg-header"><span class="msg-name">${name}</span><span class="msg-time">${time}</span></div><div class="msg-body">${body}</div></div></div>`;
+}
+
+function addMsg(role, content) {
+    const c = document.getElementById('chat');
+    if (document.getElementById('welcome')) c.innerHTML = '<div class="messages"></div>';
+    c.querySelector('.messages').insertAdjacentHTML('beforeend', msgHTML(role, content));
+    c.scrollTop = c.scrollHeight;
+    if (role === 'assistant') initCharts();
+}
+
+function send(text) { document.getElementById('input').value = text; sendMsg(); }
+
+async function sendMsg() {
+    const inp = document.getElementById('input');
+    const msg = inp.value.trim();
+    if (!msg) return;
+    
+    if (!sessionId) {
+        try {
+            const r = await fetch('/api/sessions', { method: 'POST' });
+            const d = await r.json();
+            if (d.session) { sessionId = d.session.id; sessions.unshift(d.session); renderSessions(); }
+        } catch(e) { toast('Failed', 'error'); return; }
+    }
+    
+    inp.value = '';
+    autoHeight(inp);
+    addMsg('user', msg);
+    const typingId = showTyping();
+    document.getElementById('sendBtn').disabled = true;
+    
+    try {
+        const r = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: msg, session_id: sessionId }) });
+        const d = await r.json();
+        removeTyping(typingId);
+        if (d.session_id) sessionId = d.session_id;
+        addMsg('assistant', d.response);
+        await loadSessions();
+    } catch(e) {
+        removeTyping(typingId);
+        addMsg('assistant', 'Error: Unable to process request. Please try again.');
+        logErr('Chat failed', e);
+    }
+    document.getElementById('sendBtn').disabled = false;
+    inp.focus();
+}
+
+function showTyping() {
+    const id = 'typing-' + Date.now();
+    const c = document.getElementById('chat');
+    c.querySelector('.messages')?.insertAdjacentHTML('beforeend', `<div class="msg assistant" id="${id}"><div class="msg-avatar"><span class="material-icons-outlined">psychology</span></div><div class="typing"><span></span><span></span><span></span></div></div>`);
+    c.scrollTop = c.scrollHeight;
+    return id;
+}
+
+function removeTyping(id) { document.getElementById(id)?.remove(); }
+function autoHeight(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 150) + 'px'; }
+function toast(msg, type = 'success') { const t = document.getElementById('toast'); document.getElementById('toastMsg').textContent = msg; document.getElementById('toastIcon').textContent = type === 'success' ? 'check_circle' : type === 'error' ? 'error' : 'info'; t.className = 'toast show ' + type; setTimeout(() => t.classList.remove('show'), 3000); }
+
+// Report Formatting
+function formatReport(text) {
+    // Check if this is an error message
+    if (text.startsWith('Error:')) {
+        return `<div class="alert error"><span class="material-icons-outlined alert-icon">error</span><div class="alert-content"><div class="alert-title">Error</div><div class="alert-text">${esc(text.replace(/^Error:\s*/, ''))}</div></div></div>`;
+    }
+    
+    let html = text;
+    
+    // Code blocks first (protect them)
+    const codeBlocks = [];
+    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (m, lang, code) => {
+        codeBlocks.push(`<div class="code-block">${esc(code.trim())}</div>`);
+        return `__CODE_${codeBlocks.length - 1}__`;
+    });
+    
+    // Inline code
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    
+    // Status badges (must be before other replacements)
+    html = html.replace(/🟢\s*(HEALTHY|OK|GOOD|NORMAL)/gi, '<span class="status-badge healthy"><span class="material-icons-outlined">check_circle</span>$1</span>');
+    html = html.replace(/🟡\s*(WARNING|CAUTION|MODERATE)/gi, '<span class="status-badge warning"><span class="material-icons-outlined">warning</span>$1</span>');
+    html = html.replace(/🔴\s*(CRITICAL|ERROR|SEVERE|DOWN)/gi, '<span class="status-badge critical"><span class="material-icons-outlined">error</span>$1</span>');
+    
+    // Headers - Report style
+    html = html.replace(/^## (.+)$/gm, '<div class="section"><div class="section-title"><span class="material-icons-outlined">analytics</span>$1</div></div>');
+    html = html.replace(/^### (.+)$/gm, '<div class="section-title">$1</div>');
+    
+    // Bold and italic
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    
+    // Tables (simple markdown tables)
+    html = html.replace(/\|(.+)\|\n\|[-:\| ]+\|\n((?:\|.+\|\n?)+)/g, (match, header, body) => {
+        const headers = header.split('|').filter(h => h.trim()).map(h => `<th>${h.trim()}</th>`).join('');
+        const rows = body.trim().split('\n').map(row => {
+            const cells = row.split('|').filter(c => c.trim()).map(c => {
+                const val = c.trim();
+                const isNum = /^[\d,.%]+$/.test(val);
+                return `<td${isNum ? ' class="num"' : ''}>${val}</td>`;
+            }).join('');
+            return `<tr>${cells}</tr>`;
+        }).join('');
+        return `<table class="data-table"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
+    });
+    
+    // Bullet lists
+    html = html.replace(/^[-•]\s+(.+)$/gm, '<li>$1</li>');
+    html = html.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul class="bullet-list">$1</ul>');
+    html = html.replace(/<\/ul>\s*<ul class="bullet-list">/g, '');
+    
+    // KPI pattern: "Value: 99.5%" or "Metric Name: 1,234"
+    html = html.replace(/^([A-Za-z][A-Za-z\s]+):\s*([\d,.]+%?)\s*$/gm, (m, label, value) => {
+        let cls = '';
+        const num = parseFloat(value.replace(/[,%]/g, ''));
+        if (value.includes('%')) {
+            if (num >= 95) cls = 'success';
+            else if (num >= 80) cls = 'warning';
+            else cls = 'error';
         }
+        return `<div class="kpi ${cls}"><div class="kpi-value">${value}</div><div class="kpi-label">${label}</div></div>`;
+    });
+    
+    // Wrap consecutive KPIs in grid
+    html = html.replace(/(<div class="kpi[^>]*>[\s\S]*?<\/div>)(\s*<div class="kpi)/g, '$1$2');
+    html = html.replace(/((?:<div class="kpi[^>]*>[\s\S]*?<\/div>\s*)+)/g, '<div class="kpi-grid">$1</div>');
+    
+    // Paragraphs
+    html = html.replace(/\n\n+/g, '</p><p>');
+    html = html.replace(/\n/g, '<br>');
+    
+    // Restore code blocks
+    codeBlocks.forEach((block, i) => {
+        html = html.replace(`__CODE_${i}__`, block);
+    });
+    
+    // Clean up empty paragraphs
+    html = html.replace(/<p>\s*<\/p>/g, '');
+    html = html.replace(/^<br>|<br>$/g, '');
+    
+    return `<div class="report">${html}</div>`;
+}
 
-        async function checkAuth() {
-            try {
-                const response = await fetch('/api/auth/status');
-                const data = await response.json();
-                currentUser = data.user;
-                updateUserSection();
-            } catch (e) { logError('Auth check failed', e); }
-        }
+function esc(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+function fmtDate(d) { const dt = new Date(d), diff = Date.now() - dt; if (diff < 60000) return 'Now'; if (diff < 3600000) return Math.floor(diff/60000) + 'm'; if (diff < 86400000) return Math.floor(diff/3600000) + 'h'; return dt.toLocaleDateString([], { month: 'short', day: 'numeric' }); }
+function fmtTime(d) { return new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
 
-        async function loadUserRole() {
-            try {
-                const response = await fetch('/api/user/role');
-                const data = await response.json();
-                if (data.success) { userRole = data.role; updateRoleBadge(); }
-            } catch (e) { logError('Failed to load user role', e); }
-        }
+// Chart handling
+function destroyCharts() { charts.forEach(c => c.destroy()); charts = []; }
 
-        function updateUserSection() {
-            const avatar = document.getElementById('userAvatar');
-            const name = document.getElementById('userName');
-            if (currentUser?.is_authenticated) {
-                avatar.textContent = currentUser.name.charAt(0).toUpperCase();
-                name.textContent = currentUser.name;
-            } else {
-                avatar.textContent = 'G';
-                name.textContent = 'Guest';
-            }
-        }
+function initCharts() {
+    // Look for chart data in the response and create visualizations
+    document.querySelectorAll('[data-chart]').forEach(el => {
+        try {
+            const config = JSON.parse(el.dataset.chart);
+            const canvas = document.createElement('canvas');
+            canvas.className = 'chart-canvas';
+            el.appendChild(canvas);
+            charts.push(new Chart(canvas, config));
+        } catch(e) { console.error('Chart error', e); }
+    });
+}
 
-        function updateRoleBadge() {
-            const badge = document.getElementById('userRoleBadge');
-            badge.textContent = userRole.charAt(0).toUpperCase() + userRole.slice(1);
-            badge.className = 'role-badge ' + userRole;
-        }
-
-        async function checkHealth() {
-            const badge = document.getElementById('statusBadge');
-            const text = document.getElementById('statusText');
-            try {
-                const response = await fetch('/api/health');
-                const data = await response.json();
-                if (data.databricks_connected) {
-                    badge.className = 'status-badge connected';
-                    text.textContent = 'Connected';
-                } else {
-                    badge.className = 'status-badge error';
-                    text.textContent = 'Disconnected';
-                }
-            } catch (e) {
-                badge.className = 'status-badge error';
-                text.textContent = 'Offline';
-                logError('Health check failed', e);
-            }
-        }
-
-        async function refreshMetadata() {
-            showToast('Refreshing metadata...', 'info');
-            try {
-                const response = await fetch('/api/metadata/refresh?force=true', { method: 'POST' });
-                const data = await response.json();
-                if (data.result?.refreshed) {
-                    showToast(`Refreshed: ${data.result.tables_count} tables`, 'success');
-                } else {
-                    showToast('Metadata is current', 'success');
-                }
-            } catch (e) {
-                showToast('Refresh failed', 'error');
-                logError('Metadata refresh failed', e);
-            }
-        }
-
-        async function loadSessions() {
-            try {
-                const response = await fetch('/api/sessions');
-                const data = await response.json();
-                sessions = data.sessions || [];
-                renderSessions();
-                if (sessions.length > 0) selectSession(sessions[0].id);
-            } catch (e) { logError('Failed to load sessions', e); }
-        }
-
-        function renderSessions() {
-            const container = document.getElementById('sessionsList');
-            if (!sessions.length) {
-                container.innerHTML = '<div class="empty-state"><span class="material-icons-outlined">chat_bubble_outline</span><p>No conversations</p></div>';
-                return;
-            }
-            container.innerHTML = sessions.map(s => `
-                <div class="session-item ${s.id === currentSessionId ? 'active' : ''}" onclick="selectSession('${s.id}')">
-                    <div class="session-icon"><span class="material-icons-outlined" style="font-size:16px">chat</span></div>
-                    <div class="session-info">
-                        <div class="session-title">${escapeHtml(s.title)}</div>
-                        <div class="session-meta">${formatDate(s.updated_at)}</div>
-                    </div>
-                    <div class="session-actions">
-                        <button class="session-action-btn" onclick="event.stopPropagation();openRenameDialog('${s.id}','${escapeHtml(s.title).replace(/'/g,"\\'")}')">
-                            <span class="material-icons-outlined" style="font-size:16px">edit</span>
-                        </button>
-                        <button class="session-action-btn delete" onclick="event.stopPropagation();deleteSession('${s.id}')">
-                            <span class="material-icons-outlined" style="font-size:16px">delete</span>
-                        </button>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        async function createNewSession() {
-            try {
-                const response = await fetch('/api/sessions', { method: 'POST' });
-                const data = await response.json();
-                if (data.session) {
-                    sessions.unshift(data.session);
-                    currentSessionId = data.session.id;
-                    renderSessions();
-                    clearChat();
-                    showToast('New conversation created', 'success');
-                }
-            } catch (e) {
-                showToast('Failed to create conversation', 'error');
-                logError('Failed to create session', e);
-            }
-        }
-
-        async function selectSession(id) {
-            currentSessionId = id;
-            renderSessions();
-            try {
-                const response = await fetch(`/api/sessions/${id}/messages`);
-                const data = await response.json();
-                renderMessages(data.messages || []);
-            } catch (e) { logError('Failed to load messages', e); }
-        }
-
-        async function deleteSession(id) {
-            if (!confirm('Delete this conversation?')) return;
-            try {
-                await fetch(`/api/sessions/${id}`, { method: 'DELETE' });
-                sessions = sessions.filter(s => s.id !== id);
-                renderSessions();
-                if (currentSessionId === id) {
-                    currentSessionId = null;
-                    sessions.length ? selectSession(sessions[0].id) : clearChat();
-                }
-                showToast('Deleted', 'success');
-            } catch (e) {
-                showToast('Failed to delete', 'error');
-                logError('Failed to delete session', e);
-            }
-        }
-
-        let renameSessionId = null;
-
-        function openRenameDialog(id, title) {
-            renameSessionId = id;
-            document.getElementById('renameInput').value = title;
-            document.getElementById('renameDialog').classList.add('show');
-            document.getElementById('renameInput').focus();
-        }
-
-        function closeRenameDialog() {
-            document.getElementById('renameDialog').classList.remove('show');
-            renameSessionId = null;
-        }
-
-        async function confirmRename() {
-            const newTitle = document.getElementById('renameInput').value.trim();
-            if (!newTitle || !renameSessionId) return;
-            try {
-                await fetch(`/api/sessions/${renameSessionId}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title: newTitle })
-                });
-                const session = sessions.find(s => s.id === renameSessionId);
-                if (session) session.title = newTitle;
-                renderSessions();
-                closeRenameDialog();
-                showToast('Renamed', 'success');
-            } catch (e) {
-                showToast('Rename failed', 'error');
-                logError('Failed to rename session', e);
-            }
-        }
-
-        function clearChat() {
-            document.getElementById('chatContainer').innerHTML = `
-                <div class="welcome-section" id="welcomeSection">
-                    <div class="welcome-icon"><span class="material-icons-outlined" style="font-size:32px">monitoring</span></div>
-                    <h1>System Health Analyst</h1>
-                    <p>Ask questions about your system metrics, performance data, and health status.</p>
-                    <div class="quick-actions">
-                        <button class="quick-action" onclick="sendSuggestion('What is the current system health status?')">
-                            <div class="quick-action-icon"><span class="material-icons-outlined">favorite</span></div>
-                            <div><h3>Health Status</h3><p>Overall system health</p></div>
-                        </button>
-                        <button class="quick-action" onclick="sendSuggestion('Show me the key performance metrics')">
-                            <div class="quick-action-icon"><span class="material-icons-outlined">speed</span></div>
-                            <div><h3>Performance</h3><p>Key metrics & KPIs</p></div>
-                        </button>
-                        <button class="quick-action" onclick="sendSuggestion('Are there any active alerts or issues?')">
-                            <div class="quick-action-icon"><span class="material-icons-outlined">notification_important</span></div>
-                            <div><h3>Alerts</h3><p>Active issues</p></div>
-                        </button>
-                        <button class="quick-action" onclick="sendSuggestion('What improvements do you recommend?')">
-                            <div class="quick-action-icon"><span class="material-icons-outlined">tips_and_updates</span></div>
-                            <div><h3>Insights</h3><p>Recommendations</p></div>
-                        </button>
-                    </div>
-                </div>`;
-        }
-
-        function renderMessages(messages) {
-            const container = document.getElementById('chatContainer');
-            if (!messages.length) { clearChat(); return; }
-            container.innerHTML = `<div class="messages-container">${messages.map(m => createMessageHTML(m.role, m.content, m.timestamp, m.isError)).join('')}</div>`;
-            container.scrollTop = container.scrollHeight;
-        }
-
-        function createMessageHTML(role, content, timestamp, isError = false) {
-            const icon = role === 'user' ? 'person' : (isError ? 'error' : 'psychology');
-            const sender = role === 'user' ? 'You' : 'AI Assistant';
-            const time = timestamp ? formatTime(timestamp) : 'Now';
-            const msgClass = isError ? 'error' : role;
-            const formattedContent = role === 'user' ? escapeHtml(content) : formatMessage(content, isError);
-            return `<div class="message ${msgClass}"><div class="message-avatar"><span class="material-icons-outlined">${icon}</span></div><div class="message-content"><div class="message-header"><span class="message-sender">${sender}</span><span class="message-time">${time}</span></div><div class="message-body">${formattedContent}</div></div></div>`;
-        }
-
-        function addMessage(role, content, isError = false) {
-            const container = document.getElementById('chatContainer');
-            if (document.getElementById('welcomeSection')) {
-                container.innerHTML = '<div class="messages-container"></div>';
-            }
-            const mc = container.querySelector('.messages-container') || container;
-            mc.insertAdjacentHTML('beforeend', createMessageHTML(role, content, null, isError));
-            container.scrollTop = container.scrollHeight;
-        }
-
-        function handleKeyDown(e) {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-        }
-
-        function sendSuggestion(text) { document.getElementById('messageInput').value = text; sendMessage(); }
-
-        async function sendMessage() {
-            const input = document.getElementById('messageInput');
-            const message = input.value.trim();
-            if (!message) return;
-
-            if (!currentSessionId) {
-                try {
-                    const res = await fetch('/api/sessions', { method: 'POST' });
-                    const data = await res.json();
-                    if (data.session) { currentSessionId = data.session.id; sessions.unshift(data.session); renderSessions(); }
-                } catch (e) { showToast('Failed to create session', 'error'); logError('Session creation failed', e); return; }
-            }
-
-            input.value = '';
-            autoResize(input);
-            addMessage('user', message);
-            const typingId = showTypingIndicator();
-            document.getElementById('sendBtn').disabled = true;
-
-            try {
-                const res = await fetch('/api/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message, session_id: currentSessionId })
-                });
-                const data = await res.json();
-                removeTypingIndicator(typingId);
-                
-                if (data.success === false || data.response?.startsWith('Error:')) {
-                    addMessage('assistant', data.response || 'An error occurred', true);
-                    logError('Chat error', { response: data });
-                } else {
-                    if (data.session_id && data.session_id !== currentSessionId) currentSessionId = data.session_id;
-                    addMessage('assistant', data.response);
-                }
-                await loadSessions();
-            } catch (e) {
-                removeTypingIndicator(typingId);
-                addMessage('assistant', 'Unable to process your request. Please try again.', true);
-                logError('Chat request failed', e);
-            }
-            document.getElementById('sendBtn').disabled = false;
-            input.focus();
-        }
-
-        function showTypingIndicator() {
-            const id = 'typing-' + Date.now();
-            const container = document.getElementById('chatContainer');
-            const mc = container.querySelector('.messages-container') || container;
-            mc.insertAdjacentHTML('beforeend', `<div class="message assistant" id="${id}"><div class="message-avatar"><span class="material-icons-outlined">psychology</span></div><div class="typing-indicator"><span></span><span></span><span></span></div></div>`);
-            container.scrollTop = container.scrollHeight;
-            return id;
-        }
-
-        function removeTypingIndicator(id) { document.getElementById(id)?.remove(); }
-
-        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
-
-        function autoResize(el) {
-            el.style.height = 'auto';
-            el.style.height = Math.min(el.scrollHeight, 150) + 'px';
-        }
-
-        function showToast(msg, type = 'success') {
-            const toast = document.getElementById('toast');
-            document.getElementById('toastMessage').textContent = msg;
-            document.getElementById('toastIcon').textContent = type === 'success' ? 'check_circle' : type === 'error' ? 'error' : 'info';
-            toast.className = 'toast show ' + type;
-            setTimeout(() => toast.classList.remove('show'), 3000);
-        }
-
-        function formatMessage(text, isError = false) {
-            if (isError) {
-                return `<div class="error-alert"><span class="material-icons-outlined error-icon">warning</span><div><div class="error-title">Error</div><div class="error-message">${escapeHtml(text.replace(/^Error:\s*/i, ''))}</div></div></div>`;
-            }
-            
-            return text
-                // Code blocks
-                .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
-                .replace(/`([^`]+)`/g, '<code>$1</code>')
-                // Headers
-                .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-                .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-                // Bold and italic
-                .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-                .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-                // Status cards
-                .replace(/🟢\s*HEALTHY/gi, '<div class="stat-card healthy"><span class="material-icons-outlined stat-icon">check_circle</span><span>HEALTHY</span></div>')
-                .replace(/🟡\s*WARNING/gi, '<div class="stat-card warning"><span class="material-icons-outlined stat-icon">warning</span><span>WARNING</span></div>')
-                .replace(/🔴\s*CRITICAL/gi, '<div class="stat-card critical"><span class="material-icons-outlined stat-icon">error</span><span>CRITICAL</span></div>')
-                // Numeric stats (e.g., "99.9%" or "1,234")
-                .replace(/(\d{1,3}(?:,\d{3})*(?:\.\d+)?%?)\s*([A-Za-z][A-Za-z\s]{2,20})/g, '<div class="stat-card info"><span class="stat-value">$1</span><span class="stat-label">$2</span></div>')
-                // Lists
-                .replace(/^[-•]\s+(.+)$/gm, '<li>$1</li>')
-                .replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>')
-                .replace(/<\/ul>\s*<ul>/g, '')
-                // Paragraphs
-                .replace(/\n\n/g, '</p><p>')
-                .replace(/\n/g, '<br>');
-        }
-
-        function formatDate(d) {
-            const date = new Date(d);
-            const diff = Date.now() - date;
-            if (diff < 60000) return 'Now';
-            if (diff < 3600000) return Math.floor(diff/60000) + 'm';
-            if (diff < 86400000) return Math.floor(diff/3600000) + 'h';
-            return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-        }
-
-        function formatTime(d) { return new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
-
-        function escapeHtml(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
-
-        // Error logging to observability
-        async function logError(message, error) {
-            console.error(message, error);
-            try {
-                await fetch('/api/log/error', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        message,
-                        error: error?.message || String(error),
-                        stack: error?.stack,
-                        timestamp: new Date().toISOString(),
-                        url: window.location.href,
-                        userAgent: navigator.userAgent
-                    })
-                });
-            } catch (e) { console.error('Failed to log error to server', e); }
-        }
-    </script>
+async function logErr(msg, err) {
+    console.error(msg, err);
+    try {
+        await fetch('/api/log/error', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: msg, error: err?.message || String(err), timestamp: new Date().toISOString() }) });
+    } catch(e) {}
+}
+</script>
 </body>
 </html>

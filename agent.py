@@ -111,38 +111,32 @@ def create_agent() -> Agent:
         }
     )
     
-    # Get cached metadata to include in system prompt
+    # Get cached metadata to include in system prompt (non-blocking)
     metadata_summary = ""
     try:
-        # Ensure cache is fresh
+        # Trigger background refresh if needed (non-blocking)
         metadata_cache.ensure_fresh_cache()
-        metadata_summary = metadata_cache.get_metadata_summary_for_agent()
-        logger.info("Loaded metadata context for agent")
+        # Get compact summary to reduce token consumption
+        metadata_summary = metadata_cache.get_metadata_summary_for_agent(compact=True)
+        logger.info("Loaded metadata context for agent", extra={"extra_data": {
+            "summary_length": len(metadata_summary),
+            "is_refreshing": metadata_cache.is_refreshing()
+        }})
     except Exception as e:
         logger.warning(f"Could not load metadata cache: {e}")
-        metadata_summary = "*Metadata cache not available. Use list_tables and describe_table tools to discover data.*"
+        metadata_summary = "*Use list_tables and describe_table tools to discover data.*"
     
-    # Build enhanced system prompt with metadata
+    # Build enhanced system prompt with metadata (compact version)
     enhanced_prompt = f"""{SYSTEM_PROMPT}
 
 ---
 
-## AVAILABLE DATA CONTEXT
-
-The following tables are available in the Databricks catalog. Use this information to:
-1. Quickly identify which tables are relevant to user queries
-2. Understand the data domains and their purposes
-3. Know which columns exist before writing queries
+## DATA CATALOG
 
 {metadata_summary}
 
----
-
-When querying data:
-- Use the table metadata above to write accurate queries
-- If a table seems relevant based on its description/tags, query it
-- For health checks, look for tables tagged with: time-series, metrics, errors, status-tracking
-- Always use fully qualified table names: catalog.schema.table_name
+Use describe_table tool for column details before writing queries.
+Always use fully qualified names: catalog.schema.table
 """
     
     # Create the agent with tools

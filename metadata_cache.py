@@ -7,10 +7,11 @@ Supports automatic daily refresh and manual refresh.
 import os
 import json
 import time
+import threading
 from datetime import datetime, timedelta
 from typing import Optional, Any
 from dataclasses import dataclass, field, asdict
-from threading import Lock
+from threading import Lock, Thread
 from observability import get_logger, metrics
 
 logger = get_logger(__name__)
@@ -186,12 +187,15 @@ class MetadataCacheManager:
     """
     Manages the metadata cache for Databricks tables.
     Provides caching, refresh, and query capabilities.
+    Background refresh ensures application doesn't block on startup.
     """
     
     def __init__(self):
         self._cache: MetadataCache = MetadataCache()
         self._lock = Lock()
         self._databricks_client = None
+        self._refresh_in_progress = False
+        self._refresh_thread: Optional[Thread] = None
         self._load_cache()
     
     def _get_databricks_client(self):
@@ -227,7 +231,8 @@ class MetadataCacheManager:
     
     def refresh_cache(self, force: bool = False) -> dict:
         """
-        Refresh the metadata cache from Databricks.
+        Refresh the metadata cache from Databricks (synchronous).
+        For non-blocking refresh, use refresh_cache_async().
         
         Args:
             force: Force refresh even if cache is not stale
@@ -235,15 +240,22 @@ class MetadataCacheManager:
         Returns:
             Summary of refresh operation
         """
+        if not force and not self._cache.needs_refresh():
+            logger.info("Cache is still fresh, skipping refresh")
+            return {
+                "refreshed": False,
+                "reason": "Cache is still fresh",
+                "last_refresh": self._cache.last_refresh
+            }
+        
+        return self._do_refresh()
+    
+    def _do_refresh(self) -> dict:
+        """
+        Internal method to perform the actual cache refresh.
+        Can be called synchronously or from background thread.
+        """
         with self._lock:
-            if not force and not self._cache.needs_refresh():
-                logger.info("Cache is still fresh, skipping refresh")
-                return {
-                    "refreshed": False,
-                    "reason": "Cache is still fresh",
-                    "last_refresh": self._cache.last_refresh
-                }
-            
             logger.info("Starting metadata cache refresh")
             start_time = time.time()
             
@@ -469,6 +481,7 @@ class MetadataCacheManager:
             return {
                 "last_refresh": self._cache.last_refresh,
                 "needs_refresh": self._cache.needs_refresh(),
+                "refresh_in_progress": self._refresh_in_progress,
                 "refresh_interval_hours": self._cache.refresh_interval_hours,
                 "catalogs_count": len(self._cache.catalogs),
                 "total_tables": total_tables,
@@ -567,12 +580,44 @@ class MetadataCacheManager:
             matches.sort(key=lambda x: x["relevance_score"], reverse=True)
             return matches
     
-    def get_metadata_summary_for_agent(self) -> str:
+    def get_metadata_summary_for_agent(self, compact: bool = True) -> str:
         """
         Generate a concise metadata summary for the agent's context.
         This helps the agent understand available data without repeated lookups.
+        
+        Args:
+            compact: If True, generates minimal summary to reduce token usage
         """
         with self._lock:
+            if not self._cache.catalogs:
+                if self._refresh_in_progress:
+                    return "*Metadata loading in background. Use list_tables tool to discover data.*"
+                return "*No tables cached. Use list_tables and describe_table tools to discover data.*"
+            
+            if compact:
+                # Ultra-compact format for token efficiency
+                lines = ["Available tables by domain:"]
+                
+                # Group tables by domain
+                domains: dict[str, list[str]] = {}
+                for catalog in self._cache.catalogs.values():
+                    for schema in catalog.schemas.values():
+                        for table in schema.tables.values():
+                            domain = table.domain or "general"
+                            if domain not in domains:
+                                domains[domain] = []
+                            domains[domain].append(table.name)
+                
+                for domain, tables in sorted(domains.items()):
+                    table_list = ", ".join(tables[:10])
+                    if len(tables) > 10:
+                        table_list += f" (+{len(tables) - 10} more)"
+                    lines.append(f"• {domain}: {table_list}")
+                
+                lines.append(f"\nUse describe_table for column details. Cache: {self._cache.last_refresh or 'pending'}")
+                return "\n".join(lines)
+            
+            # Full format (original behavior)
             lines = ["## Available Data Tables\n"]
             
             for catalog in self._cache.catalogs.values():
@@ -600,11 +645,55 @@ class MetadataCacheManager:
             return "\n".join(lines)
     
     def ensure_fresh_cache(self) -> bool:
-        """Ensure cache is fresh, refreshing if needed. Returns True if cache is valid."""
+        """
+        Ensure cache is fresh, triggering background refresh if needed.
+        Returns True immediately if cache exists (even if stale).
+        This is non-blocking to avoid impacting application startup.
+        """
+        # If we have any cached data, return immediately
+        has_cache = bool(self._cache.catalogs) or self._cache.last_refresh
+        
         if self._cache.needs_refresh():
-            result = self.refresh_cache()
-            return result.get("refreshed", False) or not result.get("error")
-        return True
+            # Trigger background refresh (non-blocking)
+            self.refresh_cache_async()
+        
+        return has_cache
+    
+    def refresh_cache_async(self, force: bool = False):
+        """
+        Trigger a background cache refresh without blocking.
+        Safe to call multiple times - will not spawn duplicate refreshes.
+        """
+        with self._lock:
+            # Don't start if already refreshing
+            if self._refresh_in_progress:
+                logger.debug("Background refresh already in progress, skipping")
+                return
+            
+            # Don't refresh if cache is fresh (unless forced)
+            if not force and not self._cache.needs_refresh():
+                logger.debug("Cache is fresh, skipping background refresh")
+                return
+            
+            self._refresh_in_progress = True
+        
+        def _background_refresh():
+            try:
+                logger.info("Starting background metadata cache refresh")
+                self._do_refresh()
+            except Exception as e:
+                logger.error(f"Background cache refresh failed: {e}")
+            finally:
+                with self._lock:
+                    self._refresh_in_progress = False
+        
+        self._refresh_thread = Thread(target=_background_refresh, daemon=True)
+        self._refresh_thread.start()
+        logger.info("Background metadata cache refresh started")
+    
+    def is_refreshing(self) -> bool:
+        """Check if a background refresh is in progress."""
+        return self._refresh_in_progress
 
 
 # Create singleton instance
