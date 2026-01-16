@@ -278,15 +278,14 @@ class MetadataCacheManager:
                 for cat_name in catalogs_to_scan:
                     catalog = CatalogInfo(name=cat_name)
                     
-                    # Get schemas in catalog
-                    try:
-                        schemas_query = f"SHOW SCHEMAS IN {cat_name}"
-                        schemas_result = client.execute_query(schemas_query)
-                        schema_names = [row.get('databaseName', row.get('namespace', '')) 
-                                       for row in schemas_result]
-                    except Exception as e:
-                        logger.warning(f"Failed to get schemas for catalog {cat_name}: {e}")
-                        schema_names = [default_schema] if default_schema else []
+                    # Only load from the configured schema (not all schemas)
+                    # This reduces load time and token consumption
+                    if not default_schema:
+                        logger.warning(f"No schema configured, skipping catalog {cat_name}")
+                        continue
+                    
+                    schema_names = [default_schema]
+                    logger.info(f"Loading metadata from {cat_name}.{default_schema}")
                     
                     for schema_name in schema_names:
                         if not schema_name:
