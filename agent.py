@@ -127,7 +127,23 @@ def create_agent() -> Agent:
         metadata_summary = "*Use list_tables and describe_table tools to discover data.*"
     
     # Build enhanced system prompt with metadata (compact version)
+    # Include actual catalog and schema from config
+    catalog = config.DATABRICKS_CATALOG
+    schema = config.DATABRICKS_SCHEMA
+    
     enhanced_prompt = f"""{SYSTEM_PROMPT}
+
+---
+
+## DATABRICKS CONFIGURATION
+
+**Catalog:** `{catalog}`
+**Schema:** `{schema}`
+
+**CRITICAL:** When writing SQL queries, ALWAYS use fully qualified table names in the format:
+`{catalog}.{schema}.<table_name>`
+
+Example: SELECT * FROM {catalog}.{schema}.your_table LIMIT 10
 
 ---
 
@@ -136,7 +152,6 @@ def create_agent() -> Agent:
 {metadata_summary}
 
 Use describe_table tool for column details before writing queries.
-Always use fully qualified names: catalog.schema.table
 """
     
     # Create the agent with tools

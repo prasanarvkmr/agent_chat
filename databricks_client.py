@@ -88,17 +88,29 @@ class DatabricksClient:
         Get the schema (columns) of a specific table.
         
         Args:
-            table_name: Name of the table
-            catalog: Catalog name (uses default if not specified)
-            schema: Schema name (uses default if not specified)
+            table_name: Name of the table (can be simple or fully qualified)
+            catalog: Catalog name (uses config/default if not specified)
+            schema: Schema name (uses config/default if not specified)
             
         Returns:
             List of column information dictionaries
         """
-        cat = catalog or self.catalog
-        sch = schema or self.schema
+        # Build fully qualified name
+        if table_name.count('.') >= 2:
+            # Already fully qualified
+            full_table = table_name
+        elif table_name.count('.') == 1:
+            # Has schema.table, add catalog
+            cat = catalog or self.catalog
+            full_table = f"{cat}.{table_name}"
+        else:
+            # Simple table name
+            cat = catalog or self.catalog
+            sch = schema or self.schema
+            full_table = f"{cat}.{sch}.{table_name}"
         
-        query = f"DESCRIBE TABLE {cat}.{sch}.{table_name}"
+        logger.info(f"Describing table: {full_table}")
+        query = f"DESCRIBE TABLE {full_table}"
         return self.execute_query(query)
     
     def test_connection(self) -> bool:

@@ -6,6 +6,7 @@ and perform intelligent system health analysis.
 
 from google.adk.tools import FunctionTool
 from databricks_client import databricks_client, DatabricksQueryError
+from config import config
 from typing import Any
 from datetime import datetime, timedelta
 from observability import get_logger, metrics, get_tracer
@@ -14,18 +15,52 @@ logger = get_logger(__name__)
 tracer = get_tracer()
 
 
+def get_full_table_name(table_name: str, catalog: str = None, schema: str = None) -> str:
+    """
+    Build fully qualified table name in format: catalog.schema.tablename
+    
+    Args:
+        table_name: Table name (can be simple name or already qualified)
+        catalog: Optional catalog override
+        schema: Optional schema override
+        
+    Returns:
+        Fully qualified table name: catalog.schema.tablename
+    """
+    # If already fully qualified (has two dots), return as-is
+    if table_name.count('.') >= 2:
+        return table_name
+    
+    # If partially qualified (has one dot), assume schema.table and add catalog
+    if table_name.count('.') == 1:
+        cat = catalog or config.DATABRICKS_CATALOG or databricks_client.catalog
+        return f"{cat}.{table_name}"
+    
+    # Simple table name - add catalog and schema
+    cat = catalog or config.DATABRICKS_CATALOG or databricks_client.catalog
+    sch = schema or config.DATABRICKS_SCHEMA or databricks_client.schema
+    return f"{cat}.{sch}.{table_name}"
+
+
 def query_databricks(sql_query: str) -> dict[str, Any]:
     """
     Execute a SQL query against Azure Databricks.
+    IMPORTANT: Use fully qualified table names in format: catalog.schema.tablename
     
     Args:
-        sql_query: The SQL query to execute
+        sql_query: The SQL query to execute (should use catalog.schema.tablename format)
         
     Returns:
         Dictionary with 'success' status, 'data' or 'error' message
+        
+    Example:
+        query_databricks("SELECT * FROM my_catalog.my_schema.my_table LIMIT 10")
     """
     logger.info("Tool: query_databricks called", extra={"extra_data": {"query_preview": sql_query[:100]}})
     metrics.tool_calls.inc(tool="query_databricks")
+    
+    # Log the catalog/schema being used
+    logger.info(f"Default catalog: {config.DATABRICKS_CATALOG}, schema: {config.DATABRICKS_SCHEMA}")
     
     try:
         with metrics.time_tool("query_databricks"):
@@ -34,7 +69,9 @@ def query_databricks(sql_query: str) -> dict[str, Any]:
             return {
                 "success": True,
                 "data": results,
-                "row_count": len(results)
+                "row_count": len(results),
+                "catalog": config.DATABRICKS_CATALOG,
+                "schema": config.DATABRICKS_SCHEMA
             }
     except DatabricksQueryError as e:
         logger.error(f"Query failed: {str(e)}")
@@ -122,19 +159,19 @@ def get_table_sample(table_name: str, limit: int = 10, catalog: str = None, sche
     Useful for understanding what kind of data is stored before deeper analysis.
     
     Args:
-        table_name: Name of the table to sample
+        table_name: Name of the table to sample (can be simple or fully qualified)
         limit: Number of rows to return (default 10)
-        catalog: Optional catalog name
-        schema: Optional schema name
+        catalog: Optional catalog name (uses env config if not provided)
+        schema: Optional schema name (uses env config if not provided)
         
     Returns:
         Dictionary with sample data and column info
     """
     try:
-        cat = catalog or databricks_client.catalog
-        sch = schema or databricks_client.schema
+        full_table = get_full_table_name(table_name, catalog, schema)
+        logger.info(f"Tool: get_table_sample - querying {full_table}")
         
-        query = f"SELECT * FROM {cat}.{sch}.{table_name} LIMIT {limit}"
+        query = f"SELECT * FROM {full_table} LIMIT {limit}"
         results = databricks_client.execute_query(query)
         
         return {
@@ -156,17 +193,16 @@ def get_table_stats(table_name: str, catalog: str = None, schema: str = None) ->
     Helps understand the volume and recency of data.
     
     Args:
-        table_name: Name of the table
-        catalog: Optional catalog name
-        schema: Optional schema name
+        table_name: Name of the table (can be simple or fully qualified)
+        catalog: Optional catalog name (uses env config if not provided)
+        schema: Optional schema name (uses env config if not provided)
         
     Returns:
         Dictionary with table statistics
     """
     try:
-        cat = catalog or databricks_client.catalog
-        sch = schema or databricks_client.schema
-        full_table = f"{cat}.{sch}.{table_name}"
+        full_table = get_full_table_name(table_name, catalog, schema)
+        logger.info(f"Tool: get_table_stats - querying {full_table}")
         
         # Get row count
         count_query = f"SELECT COUNT(*) as total_rows FROM {full_table}"
@@ -210,9 +246,8 @@ def analyze_time_series_health(
         Dictionary with health analysis results
     """
     try:
-        cat = catalog or databricks_client.catalog
-        sch = schema or databricks_client.schema
-        full_table = f"{cat}.{sch}.{table_name}"
+        full_table = get_full_table_name(table_name, catalog, schema)
+        logger.info(f"Tool: analyze_time_series_health - querying {full_table}")
         
         # Calculate time boundary
         time_filter = f"{timestamp_column} >= CURRENT_TIMESTAMP - INTERVAL {hours_back} HOURS"
@@ -324,9 +359,8 @@ def detect_anomalies(
         Dictionary with anomaly detection results
     """
     try:
-        cat = catalog or databricks_client.catalog
-        sch = schema or databricks_client.schema
-        full_table = f"{cat}.{sch}.{table_name}"
+        full_table = get_full_table_name(table_name, catalog, schema)
+        logger.info(f"Tool: detect_anomalies - querying {full_table}")
         
         time_filter = f"{timestamp_column} >= CURRENT_TIMESTAMP - INTERVAL {hours_back} HOURS"
         
@@ -417,9 +451,8 @@ def get_error_summary(
         Dictionary with error summary
     """
     try:
-        cat = catalog or databricks_client.catalog
-        sch = schema or databricks_client.schema
-        full_table = f"{cat}.{sch}.{table_name}"
+        full_table = get_full_table_name(table_name, catalog, schema)
+        logger.info(f"Tool: get_error_summary - querying {full_table}")
         
         time_filter = f"{timestamp_column} >= CURRENT_TIMESTAMP - INTERVAL {hours_back} HOURS"
         

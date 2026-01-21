@@ -44,6 +44,12 @@ YOUR ROLE:
 - Calculate metrics and statistics
 - Provide raw data and analysis results
 
+CRITICAL SQL REQUIREMENTS:
+**ALWAYS use fully qualified table names in the format: catalog.schema.tablename**
+- Example: SELECT * FROM my_catalog.my_schema.transactions LIMIT 10
+- NEVER use unqualified table names like just "transactions"
+- The catalog and schema are loaded from environment configuration
+
 GUIDELINES:
 1. Always verify table existence before querying
 2. Use appropriate time filters for relevant data
@@ -83,6 +89,7 @@ class DataAgent(BaseAgent):
     def _get_system_prompt(self) -> str:
         """Get data agent system prompt with metadata context."""
         from metadata_cache import metadata_cache
+        from config import config
         
         try:
             metadata_cache.ensure_fresh_cache()
@@ -91,7 +98,22 @@ class DataAgent(BaseAgent):
             logger.warning(f"Could not load metadata: {e}")
             self._metadata_summary = "*Use list_tables and describe_table to discover data.*"
         
+        # Get catalog and schema from config
+        catalog = config.DATABRICKS_CATALOG
+        schema = config.DATABRICKS_SCHEMA
+        
         return f"""{DATA_AGENT_PROMPT}
+
+---
+
+## CURRENT CONFIGURATION
+
+**Catalog:** `{catalog}`
+**Schema:** `{schema}`
+
+When writing SQL queries, use the format: `{catalog}.{schema}.<table_name>`
+
+Example: SELECT * FROM {catalog}.{schema}.your_table LIMIT 10
 
 ---
 
@@ -100,7 +122,6 @@ class DataAgent(BaseAgent):
 {self._metadata_summary}
 
 Use describe_table for detailed column information.
-Always use fully qualified names: catalog.schema.table
 """
     
     def _get_tools(self) -> list:
