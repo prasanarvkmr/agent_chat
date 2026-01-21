@@ -176,6 +176,24 @@
         .typing span:nth-child(3) { animation-delay: 0.4s; }
         @keyframes bounce { 0%,60%,100% { opacity: 0.3; } 30% { opacity: 1; } }
         
+        /* Progress Indicator */
+        .progress-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+        .progress-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+        .progress-icon { width: 36px; height: 36px; background: var(--primary); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; animation: pulse 2s infinite; }
+        .progress-icon.complete { background: var(--success); animation: none; }
+        .progress-icon.error { background: var(--error); animation: none; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        .progress-info { flex: 1; }
+        .progress-agent { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+        .progress-status { font-size: 12px; color: var(--text-muted); }
+        .progress-bar-wrap { height: 6px; background: var(--bg-muted); border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+        .progress-bar { height: 100%; background: var(--primary); border-radius: 3px; transition: width 0.3s ease; }
+        .progress-bar.complete { background: var(--success); }
+        .progress-detail { font-size: 12px; color: var(--text-secondary); }
+        .progress-time { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+        .stop-btn { padding: 6px 12px; background: var(--error); color: white; border: none; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+        .stop-btn:hover { background: #b91c1c; }
+        
         /* Input */
         .input-area { background: var(--bg-card); border-top: 1px solid var(--border); padding: 16px 24px; }
         .input-wrap { max-width: 900px; margin: 0 auto; display: flex; gap: 10px; background: var(--bg-muted); border-radius: 10px; padding: 10px 10px 10px 16px; }
@@ -435,11 +453,104 @@ function addMsg(role, content) {
 
 function send(text) { document.getElementById('input').value = text; sendMsg(); }
 
+// Active request tracking
+let currentRequestId = null;
+let currentEventSource = null;
+
+function generateRequestId() {
+    return 'req-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+}
+
+async function cancelRequest() {
+    if (currentRequestId) {
+        try {
+            await fetch(`/api/chat/cancel/${currentRequestId}`, { method: 'POST' });
+            toast('Request cancelled', 'info');
+        } catch(e) {
+            console.error('Cancel failed', e);
+        }
+    }
+    if (currentEventSource) {
+        currentEventSource.close();
+        currentEventSource = null;
+    }
+    currentRequestId = null;
+    document.getElementById('sendBtn').disabled = false;
+}
+
+function showProgress(requestId) {
+    const id = 'progress-' + requestId;
+    const c = document.getElementById('chat');
+    const html = `
+        <div class="msg assistant" id="${id}">
+            <div class="msg-avatar"><span class="material-icons-outlined">psychology</span></div>
+            <div class="msg-content">
+                <div class="progress-card">
+                    <div class="progress-header">
+                        <div class="progress-icon" id="${id}-icon"><span class="material-icons-outlined">sync</span></div>
+                        <div class="progress-info">
+                            <div class="progress-agent" id="${id}-agent">Initializing...</div>
+                            <div class="progress-status" id="${id}-status">Starting multi-agent pipeline</div>
+                        </div>
+                        <button class="stop-btn" onclick="cancelRequest()">
+                            <span class="material-icons-outlined" style="font-size:14px">stop</span> Stop
+                        </button>
+                    </div>
+                    <div class="progress-bar-wrap">
+                        <div class="progress-bar" id="${id}-bar" style="width: 0%"></div>
+                    </div>
+                    <div class="progress-detail" id="${id}-detail">Analyzing your query...</div>
+                    <div class="progress-time" id="${id}-time">0.0s</div>
+                </div>
+            </div>
+        </div>
+    `;
+    c.querySelector('.messages')?.insertAdjacentHTML('beforeend', html);
+    c.scrollTop = c.scrollHeight;
+    return id;
+}
+
+function updateProgress(requestId, data) {
+    const id = 'progress-' + requestId;
+    const agentEl = document.getElementById(`${id}-agent`);
+    const statusEl = document.getElementById(`${id}-status`);
+    const barEl = document.getElementById(`${id}-bar`);
+    const detailEl = document.getElementById(`${id}-detail`);
+    const timeEl = document.getElementById(`${id}-time`);
+    const iconEl = document.getElementById(`${id}-icon`);
+    
+    if (!agentEl) return;
+    
+    if (data.agent_name) agentEl.textContent = data.agent_name;
+    if (data.status) statusEl.textContent = data.status.charAt(0).toUpperCase() + data.status.slice(1);
+    if (data.progress_pct !== undefined) barEl.style.width = data.progress_pct + '%';
+    if (data.message) detailEl.textContent = data.message;
+    if (data.elapsed_ms !== undefined) timeEl.textContent = (data.elapsed_ms / 1000).toFixed(1) + 's';
+    
+    // Update icon based on status
+    if (data.status === 'completed') {
+        iconEl.classList.add('complete');
+        iconEl.innerHTML = '<span class="material-icons-outlined">check</span>';
+        barEl.classList.add('complete');
+    } else if (data.status === 'error' || data.status === 'cancelled') {
+        iconEl.classList.add('error');
+        iconEl.innerHTML = '<span class="material-icons-outlined">error</span>';
+    }
+    
+    document.getElementById('chat').scrollTop = document.getElementById('chat').scrollHeight;
+}
+
+function removeProgress(requestId) {
+    const id = 'progress-' + requestId;
+    document.getElementById(id)?.remove();
+}
+
 async function sendMsg() {
     const inp = document.getElementById('input');
     const msg = inp.value.trim();
     if (!msg) return;
     
+    // Create session if needed
     if (!sessionId) {
         try {
             const r = await fetch('/api/sessions', { method: 'POST' });
@@ -451,22 +562,71 @@ async function sendMsg() {
     inp.value = '';
     autoHeight(inp);
     addMsg('user', msg);
-    const typingId = showTyping();
+    
     document.getElementById('sendBtn').disabled = true;
     
+    // Generate request ID and show progress
+    currentRequestId = generateRequestId();
+    const progressId = showProgress(currentRequestId);
+    
+    // Build SSE URL
+    const params = new URLSearchParams({
+        message: msg,
+        request_id: currentRequestId,
+        session_id: sessionId || '',
+        time_range: '24h'
+    });
+    
     try {
-        const r = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: msg, session_id: sessionId }) });
-        const d = await r.json();
-        removeTyping(typingId);
-        if (d.session_id) sessionId = d.session_id;
-        addMsg('assistant', d.response);
-        await loadSessions();
+        currentEventSource = new EventSource(`/api/chat/stream?${params}`);
+        
+        currentEventSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                
+                if (data.type === 'progress') {
+                    updateProgress(currentRequestId, data.data);
+                } else if (data.type === 'complete') {
+                    removeProgress(currentRequestId);
+                    if (data.data.session_id) sessionId = data.data.session_id;
+                    addMsg('assistant', data.data.response);
+                    loadSessions();
+                } else if (data.type === 'cancelled') {
+                    removeProgress(currentRequestId);
+                    toast('Request cancelled', 'info');
+                } else if (data.type === 'error') {
+                    removeProgress(currentRequestId);
+                    addMsg('assistant', `Error: ${data.data.message}`);
+                    logErr('Stream error', data.data.message);
+                } else if (data.type === 'done') {
+                    currentEventSource?.close();
+                    currentEventSource = null;
+                    currentRequestId = null;
+                    document.getElementById('sendBtn').disabled = false;
+                }
+            } catch(e) {
+                console.error('Parse error', e);
+            }
+        };
+        
+        currentEventSource.onerror = (e) => {
+            console.error('SSE error', e);
+            currentEventSource?.close();
+            currentEventSource = null;
+            removeProgress(currentRequestId);
+            currentRequestId = null;
+            document.getElementById('sendBtn').disabled = false;
+            toast('Connection error', 'error');
+        };
+        
     } catch(e) {
-        removeTyping(typingId);
+        removeProgress(currentRequestId);
         addMsg('assistant', 'Error: Unable to process request. Please try again.');
         logErr('Chat failed', e);
+        document.getElementById('sendBtn').disabled = false;
+        currentRequestId = null;
     }
-    document.getElementById('sendBtn').disabled = false;
+    
     inp.focus();
 }
 

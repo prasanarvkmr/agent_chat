@@ -4,12 +4,14 @@ Provides REST API endpoints and serves the web UI.
 """
 
 from fastapi import FastAPI, Request, HTTPException, Depends
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 import uvicorn
+import json
+import asyncio
 
 from agent import agent_runner
 from config import config
@@ -18,6 +20,16 @@ from observability import get_logger, setup_logging, metrics, get_tracer, get_ag
 from auth import EntraAuthConfig, get_current_user, User
 from sessions import session_manager
 from metadata_cache import metadata_cache
+from agents import (
+    orchestrator, 
+    PersonaType, 
+    ExecutionMode,
+    ProgressUpdate,
+    create_cancellation_token,
+    cancel_request,
+    cleanup_request
+)
+from agents.base_agent import AgentResult
 
 # Setup logging
 setup_logging(level="INFO")
@@ -465,6 +477,314 @@ async def get_user_role(user: User = Depends(get_current_user)):
             "domains": ["general"],
             "note": "Default role (role lookup failed)"
         }
+
+
+# ============================================================================
+# Multi-Agent System Endpoints
+# ============================================================================
+
+class MultiAgentChatRequest(BaseModel):
+    """Request model for multi-agent chat endpoint."""
+    message: str
+    session_id: Optional[str] = None
+    persona: Optional[str] = None  # "it", "manager", "executive"
+    time_range: Optional[str] = "24h"
+    execution_mode: Optional[str] = "sequential"  # "sequential" or "parallel"
+
+
+class MultiAgentChatResponse(BaseModel):
+    """Response model for multi-agent chat."""
+    response: str
+    success: bool
+    session_id: Optional[str] = None
+    persona: str
+    duration_ms: float
+    data_agent_summary: Optional[str] = None
+
+
+@app.post("/api/chat/multi", response_model=MultiAgentChatResponse)
+async def multi_agent_chat(request: MultiAgentChatRequest, user: User = Depends(get_current_user)):
+    """
+    Multi-agent chat endpoint with persona-based report formatting.
+    
+    The orchestrator coordinates:
+    1. Data Agent - retrieves raw data from Databricks
+    2. Persona Agent - formats the report for the target audience
+    
+    Args:
+        message: User's query
+        persona: Target persona (it/manager/executive) - auto-detected if not specified
+        time_range: Data time range (default: 24h)
+        execution_mode: sequential or parallel
+    """
+    if not request.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+    
+    # Ensure session exists
+    session_id = request.session_id
+    if not session_id:
+        session = session_manager.create_session(user.id)
+        session_id = session.id
+    
+    # Store user message
+    session_manager.add_message(session_id, "user", request.message)
+    
+    # Parse persona
+    persona = None
+    if request.persona:
+        try:
+            persona = PersonaType(request.persona.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid persona: {request.persona}. Must be 'it', 'manager', or 'executive'"
+            )
+    
+    # Parse execution mode
+    try:
+        exec_mode = ExecutionMode(request.execution_mode.lower()) if request.execution_mode else ExecutionMode.SEQUENTIAL
+    except ValueError:
+        exec_mode = ExecutionMode.SEQUENTIAL
+    
+    logger.info("Multi-agent chat request", extra={"extra_data": {
+        "message_preview": request.message[:100],
+        "persona": persona.value if persona else "auto",
+        "time_range": request.time_range,
+        "mode": exec_mode.value,
+        "user_id": user.id
+    }})
+    
+    try:
+        with metrics.time_request("multi_agent_chat"):
+            result = await orchestrator.process(
+                query=request.message,
+                persona=persona,
+                time_range=request.time_range,
+                execution_mode=exec_mode
+            )
+        
+        # Store assistant response
+        session_manager.add_message(session_id, "assistant", result.content)
+        
+        detected_persona = result.raw_data.get("persona", "manager") if result.raw_data else "manager"
+        
+        return MultiAgentChatResponse(
+            response=result.content if result.success else f"Error: {result.error}",
+            success=result.success,
+            session_id=session_id,
+            persona=detected_persona,
+            duration_ms=result.duration_ms,
+            data_agent_summary=result.raw_data.get("data_agent_output", "")[:200] if result.raw_data else None
+        )
+        
+    except Exception as e:
+        logger.error(f"Multi-agent chat failed: {e}", exc_info=True)
+        metrics.request_errors.inc(endpoint="multi_agent_chat")
+        return MultiAgentChatResponse(
+            response=f"Error: {str(e)}",
+            success=False,
+            session_id=session_id,
+            persona=request.persona or "manager",
+            duration_ms=0
+        )
+
+
+@app.post("/api/chat/all-personas")
+async def chat_all_personas(request: MultiAgentChatRequest, user: User = Depends(get_current_user)):
+    """
+    Generate reports for all personas in parallel.
+    Returns IT, Manager, and Executive views of the same data.
+    """
+    if not request.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+    
+    # Enable all personas mode
+    orchestrator.config.enable_all_personas = True
+    
+    try:
+        result = await orchestrator.process(
+            query=request.message,
+            time_range=request.time_range,
+            execution_mode=ExecutionMode.PARALLEL
+        )
+        
+        return {
+            "success": result.success,
+            "reports": result.content,
+            "duration_ms": result.duration_ms,
+            "error": result.error
+        }
+    finally:
+        # Reset to single persona mode
+        orchestrator.config.enable_all_personas = False
+
+
+@app.get("/api/agents/personas")
+async def list_personas():
+    """List available personas and their descriptions."""
+    return {
+        "personas": [
+            {
+                "id": "it",
+                "name": "IT Technical",
+                "description": "Detailed technical reports for IT engineers and DevOps",
+                "audience": "System Administrators, DevOps, Engineers"
+            },
+            {
+                "id": "manager",
+                "name": "Operations Manager",
+                "description": "Operational reports balancing technical and business context",
+                "audience": "Team Managers, Project Managers, Operations Leads"
+            },
+            {
+                "id": "executive",
+                "name": "Executive",
+                "description": "Concise strategic summaries for leadership",
+                "audience": "CTO, CIO, VP Engineering, Senior Leadership"
+            }
+        ]
+    }
+
+
+@app.post("/api/agents/config")
+async def configure_orchestrator(
+    default_persona: Optional[str] = None,
+    execution_mode: Optional[str] = None
+):
+    """Configure the multi-agent orchestrator settings."""
+    if default_persona:
+        try:
+            orchestrator.set_default_persona(PersonaType(default_persona.lower()))
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid persona: {default_persona}")
+    
+    if execution_mode:
+        try:
+            orchestrator.set_execution_mode(ExecutionMode(execution_mode.lower()))
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid mode: {execution_mode}")
+    
+    return {
+        "success": True,
+        "config": {
+            "default_persona": orchestrator.config.default_persona.value,
+            "execution_mode": orchestrator.config.execution_mode.value,
+            "enable_all_personas": orchestrator.config.enable_all_personas
+        }
+    }
+
+
+# SSE Streaming endpoint for multi-agent chat with progress
+@app.get("/api/chat/stream")
+async def stream_multi_agent_chat(
+    message: str,
+    request_id: str,
+    session_id: Optional[str] = None,
+    persona: Optional[str] = None,
+    time_range: str = "24h",
+    user: User = Depends(get_current_user)
+):
+    """
+    Server-Sent Events endpoint for streaming multi-agent progress.
+    
+    Streams progress updates as the orchestrator coordinates agents,
+    allowing the UI to show which agent is active and overall progress.
+    
+    Query params:
+        message: User's query
+        request_id: Unique ID for this request (used for cancellation)
+        session_id: Optional session ID
+        persona: Optional persona (it/manager/executive)
+        time_range: Data time range
+    """
+    if not message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+    
+    # Parse persona
+    target_persona = None
+    if persona:
+        try:
+            target_persona = PersonaType(persona.lower())
+        except ValueError:
+            pass
+    
+    # Create cancellation token
+    cancel_token = create_cancellation_token(request_id)
+    
+    async def event_generator():
+        try:
+            # Ensure session exists
+            sid = session_id
+            if not sid:
+                session = session_manager.create_session(user.id)
+                sid = session.id
+            
+            # Store user message
+            session_manager.add_message(sid, "user", message)
+            
+            final_response = None
+            
+            async for update in orchestrator.process_with_progress(
+                query=message,
+                persona=target_persona,
+                time_range=time_range,
+                cancellation_token=cancel_token
+            ):
+                if isinstance(update, ProgressUpdate):
+                    # Send progress update
+                    data = {
+                        "type": "progress",
+                        "data": update.to_dict()
+                    }
+                    yield f"data: {json.dumps(data)}\n\n"
+                elif isinstance(update, AgentResult):
+                    # Final result
+                    final_response = update
+                    
+                    # Store assistant response
+                    if update.success:
+                        session_manager.add_message(sid, "assistant", update.content)
+                    
+                    data = {
+                        "type": "complete",
+                        "data": {
+                            "success": update.success,
+                            "response": update.content,
+                            "session_id": sid,
+                            "persona": update.raw_data.get("persona", "manager") if update.raw_data else "manager",
+                            "duration_ms": update.duration_ms,
+                            "error": update.error
+                        }
+                    }
+                    yield f"data: {json.dumps(data)}\n\n"
+            
+        except asyncio.CancelledError:
+            yield f"data: {json.dumps({'type': 'cancelled', 'data': {'message': 'Request cancelled'}})}\n\n"
+        except Exception as e:
+            logger.error(f"Stream error: {e}", exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'data': {'message': str(e)}})}\n\n"
+        finally:
+            cleanup_request(request_id)
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+
+@app.post("/api/chat/cancel/{request_id}")
+async def cancel_chat_request(request_id: str):
+    """Cancel an ongoing chat request."""
+    if cancel_request(request_id):
+        logger.info(f"Request cancelled: {request_id}")
+        return {"success": True, "message": "Request cancelled"}
+    return {"success": False, "message": "Request not found or already completed"}
 
 
 # Run the application
