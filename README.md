@@ -1,20 +1,84 @@
-# System Health Analyst
+# Contact Center AI Agent - Outage Prediction & Operations Intelligence
 
-An AI-powered system health analyzer for business users. This agentic AI application automatically discovers your data in Azure Databricks, analyzes it for health indicators, and provides easy-to-understand insights, KPIs, and recommendations.
+An AI-powered data analyst agent for contact center operations. Predicts outages, analyzes operational data from multiple systems (Genesys, IVR, Incidents, Infrastructure), and provides actionable insights through natural language queries.
 
-## Features
+## 🎯 Key Capabilities
 
-- 🤖 **Intelligent Health Analysis**: Automatically discovers and analyzes your data without requiring SQL knowledge
-- 📊 **Business-Friendly**: Designed for non-technical users who need system health insights
-- 🔍 **Automatic Discovery**: Finds and examines tables to identify health-relevant metrics
-- ⚠️ **Anomaly Detection**: Identifies unusual patterns and potential issues
-- 📈 **KPI Generation**: Extracts and presents key performance indicators
-- 💡 **Recommendations**: Provides actionable insights based on data analysis
-- 🔗 **Azure Databricks Integration**: Direct connection to your Databricks SQL warehouse
-- 🛠️ **Google ADK**: Built with Google's Agent Development Kit for reliable tool usage
-- 🧠 **Multi-LLM Support**: Works with GPT-5, Claude, or Gemini via Kong AI Gateway
+- 🔮 **Outage Prediction**: Calculate risk scores using leading indicators
+- 📊 **Multi-Source Analysis**: Genesys, Nuance IVR, Watson IVR, Incidents, Solarwinds, Nexthink, ThousandEyes
+- 🤖 **Intelligent Data Discovery**: Handles undocumented schemas automatically
+- 📈 **Leading Indicators**: Real-time calculation of warning thresholds
+- 🔍 **Anomaly Detection**: Identifies unusual patterns before they become outages
+- 💡 **Actionable Recommendations**: Suggests interventions based on data analysis
+- 🔗 **Azure Databricks**: Direct connection to your data warehouse
+- ⚡ **Fast Startup Option**: Disable metadata cache for quicker initialization
 
-## Architecture
+## 📖 Documentation
+
+**See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for complete flowcharts and beginner guide.**
+
+## Quick Start
+
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Configure environment (copy and edit .env)
+cp .env.example .env
+
+# 3. Run the application
+python app.py
+
+# 4. Open browser: http://localhost:8000
+```
+
+## ⚙️ Configuration
+
+### Environment Variables
+
+```env
+# LLM Configuration (via Kong Gateway)
+KONG_AI_GATEWAY_BASE_URL=https://your-kong-gateway.com
+KONG_API_KEY=your-api-key
+LLM_MODEL=gpt-4  # Options: gpt-4, claude-sonnet, gemini-pro
+
+# Azure Databricks
+DATABRICKS_SERVER_HOSTNAME=your-workspace.azuredatabricks.net
+DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/your-warehouse-id
+DATABRICKS_ACCESS_TOKEN=your-token
+DATABRICKS_CATALOG=your_catalog
+DATABRICKS_SCHEMA=your_schema
+
+# Performance Options
+USE_METADATA_CACHE=true          # Set 'false' for faster startup
+METADATA_CACHE_REFRESH_HOURS=24
+```
+
+### Disabling Metadata Cache (Faster Startup)
+
+If startup is slow due to metadata loading:
+
+```bash
+# Option 1: Environment variable
+USE_METADATA_CACHE=false
+
+# Option 2: In code
+from agents.data_agent import create_data_agent
+agent = create_data_agent(use_metadata_cache=False)
+```
+
+## 💬 Example Queries
+
+| Use Case | Example Query |
+|----------|---------------|
+| Health Check | "Analyze contact center health for the last 4 hours" |
+| Outage Risk | "Calculate current outage risk with leading indicators" |
+| Call Analysis | "Show call volume trends and abandonment rates" |
+| IVR Issues | "Check IVR recognition rates and containment metrics" |
+| Correlation | "Correlate recent incidents with operational metrics" |
+| Custom | "Find network latency data and detect anomalies" |
+
+## 🏗️ Architecture
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐

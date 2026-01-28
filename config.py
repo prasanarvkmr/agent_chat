@@ -64,6 +64,11 @@ class Config:
     DATABRICKS_CATALOG: str = os.getenv("DATABRICKS_CATALOG", "")
     DATABRICKS_SCHEMA: str = os.getenv("DATABRICKS_SCHEMA", "")
     
+    # Metadata Cache Settings
+    # Set USE_METADATA_CACHE=false to disable caching (faster startup, uses live discovery)
+    USE_METADATA_CACHE: bool = os.getenv("USE_METADATA_CACHE", "true").lower() in ("true", "1", "yes")
+    METADATA_CACHE_REFRESH_HOURS: int = int(os.getenv("METADATA_CACHE_REFRESH_HOURS", "24"))
+    
     @classmethod
     def validate(cls) -> list[str]:
         """Validate that required configuration is present."""
