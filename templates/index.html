@@ -191,8 +191,19 @@
         .progress-bar.complete { background: var(--success); }
         .progress-detail { font-size: 12px; color: var(--text-secondary); }
         .progress-time { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
-        .stop-btn { padding: 6px 12px; background: var(--error); color: white; border: none; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 4px; }
-        .stop-btn:hover { background: #b91c1c; }
+        .stop-btn { padding: 8px 16px; background: var(--error); color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; }
+        .stop-btn:hover { background: #b91c1c; transform: scale(1.02); }
+        .stop-btn:active { transform: scale(0.98); }
+        
+        /* Error Message Styling */
+        .error-message { background: var(--error-bg); border: 1px solid var(--error); border-radius: 8px; padding: 16px; margin: 12px 0; }
+        .error-message .error-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .error-message .error-icon { color: var(--error); font-size: 24px; }
+        .error-message .error-title { font-weight: 600; color: var(--error); font-size: 15px; }
+        .error-message .error-body { color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+        .error-message .error-details { margin-top: 12px; padding: 10px; background: rgba(0,0,0,0.05); border-radius: 4px; font-family: monospace; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+        .error-message .error-actions { margin-top: 12px; display: flex; gap: 8px; }
+        .error-message .retry-btn { padding: 6px 12px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
         
         /* Input */
         .input-area { background: var(--bg-card); border-top: 1px solid var(--border); padding: 16px 24px; }
@@ -453,6 +464,12 @@ function addMsg(role, content) {
 
 function send(text) { document.getElementById('input').value = text; sendMsg(); }
 
+function retryLastMessage() {
+    if (lastUserMessage) {
+        send(lastUserMessage);
+    }
+}
+
 // Active request tracking
 let currentRequestId = null;
 let currentEventSource = null;
@@ -561,6 +578,7 @@ async function sendMsg() {
     
     inp.value = '';
     autoHeight(inp);
+    lastUserMessage = msg; // Store for retry
     addMsg('user', msg);
     
     document.getElementById('sendBtn').disabled = true;
@@ -596,7 +614,9 @@ async function sendMsg() {
                     toast('Request cancelled', 'info');
                 } else if (data.type === 'error') {
                     removeProgress(currentRequestId);
-                    addMsg('assistant', `Error: ${data.data.message}`);
+                    const errorMsg = data.data.message || 'An unknown error occurred';
+                    addMsg('assistant', `Error: ${errorMsg}`);
+                    toast('Request failed: ' + errorMsg.substring(0, 50), 'error');
                     logErr('Stream error', data.data.message);
                 } else if (data.type === 'done') {
                     currentEventSource?.close();
@@ -642,11 +662,45 @@ function removeTyping(id) { document.getElementById(id)?.remove(); }
 function autoHeight(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 150) + 'px'; }
 function toast(msg, type = 'success') { const t = document.getElementById('toast'); document.getElementById('toastMsg').textContent = msg; document.getElementById('toastIcon').textContent = type === 'success' ? 'check_circle' : type === 'error' ? 'error' : 'info'; t.className = 'toast show ' + type; setTimeout(() => t.classList.remove('show'), 3000); }
 
+// Last user message for retry
+let lastUserMessage = '';
+
 // Report Formatting
 function formatReport(text) {
     // Check if this is an error message
     if (text.startsWith('Error:')) {
-        return `<div class="alert error"><span class="material-icons-outlined alert-icon">error</span><div class="alert-content"><div class="alert-title">Error</div><div class="alert-text">${esc(text.replace(/^Error:\s*/, ''))}</div></div></div>`;
+        const errorText = text.replace(/^Error:\s*/, '');
+        const isAgentError = errorText.includes('Agent') || errorText.includes('agent');
+        const isConnectionError = errorText.includes('connection') || errorText.includes('timeout') || errorText.includes('network');
+        const isQueryError = errorText.includes('query') || errorText.includes('SQL') || errorText.includes('table');
+        
+        let errorType = 'Processing Error';
+        let suggestion = 'Please try again or rephrase your question.';
+        
+        if (isAgentError) {
+            errorType = 'Agent Error';
+            suggestion = 'The AI agent encountered an issue. Try simplifying your request or ask about specific data.';
+        } else if (isConnectionError) {
+            errorType = 'Connection Error';
+            suggestion = 'Unable to connect to the data source. Check your network connection and try again.';
+        } else if (isQueryError) {
+            errorType = 'Data Query Error';
+            suggestion = 'There was an issue querying the data. The table or column might not exist.';
+        }
+        
+        return `
+            <div class="error-message">
+                <div class="error-header">
+                    <span class="material-icons-outlined error-icon">error_outline</span>
+                    <span class="error-title">${errorType}</span>
+                </div>
+                <div class="error-body">${esc(suggestion)}</div>
+                <div class="error-details">${esc(errorText)}</div>
+                <div class="error-actions">
+                    <button class="retry-btn" onclick="retryLastMessage()"><span class="material-icons-outlined" style="font-size:14px;vertical-align:middle">refresh</span> Retry</button>
+                </div>
+            </div>
+        `;
     }
     
     let html = text;

@@ -193,9 +193,11 @@ class OrchestratorAgent:
                 
                 if not data_result.success:
                     logger.error(f"Data agent failed: {data_result.error}")
+                    # Return user-friendly error with agent's formatted message
+                    error_content = data_result.content if data_result.content else f"Error retrieving data: {data_result.error}"
                     return AgentResult(
                         success=False,
-                        content=f"Error retrieving data: {data_result.error}",
+                        content=error_content,
                         agent_type=AgentType.ORCHESTRATOR,
                         duration_ms=(time.time() - start_time) * 1000,
                         error=data_result.error

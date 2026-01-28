@@ -218,13 +218,46 @@ class BaseAgent(ABC):
             duration_ms = (time.time() - start_time) * 1000
             logger.error(f"Agent {self.name} failed: {e}", exc_info=True)
             
+            # Create user-friendly error message
+            error_str = str(e)
+            user_message = self._format_error_for_user(error_str)
+            
             return AgentResult(
                 success=False,
-                content="",
+                content=user_message,
                 agent_type=self.agent_type,
                 duration_ms=duration_ms,
-                error=str(e)
+                error=error_str
             )
+    
+    def _format_error_for_user(self, error: str) -> str:
+        """Convert technical errors into user-friendly messages."""
+        error_lower = error.lower()
+        
+        # Connection/network errors
+        if any(x in error_lower for x in ['connection', 'timeout', 'network', 'unreachable']):
+            return "Unable to connect to the data source. Please check your connection and try again."
+        
+        # Authentication errors
+        if any(x in error_lower for x in ['auth', 'token', 'permission', 'access denied', '401', '403']):
+            return "Authentication failed. Please verify your credentials are configured correctly."
+        
+        # SQL/Query errors
+        if any(x in error_lower for x in ['sql', 'query', 'syntax error', 'table', 'column']):
+            if 'not found' in error_lower or 'does not exist' in error_lower:
+                return f"The requested table or column was not found. Please verify the data exists.\n\nDetails: {error}"
+            return f"There was an issue with the data query.\n\nDetails: {error}"
+        
+        # Rate limiting
+        if any(x in error_lower for x in ['rate limit', 'too many requests', '429']):
+            return "Too many requests. Please wait a moment and try again."
+        
+        # LLM/AI errors
+        if any(x in error_lower for x in ['context', 'token limit', 'model']):
+            return "The AI model encountered an issue processing your request. Try simplifying your question."
+        
+        # Generic error with details
+        return f"An error occurred while processing your request.\n\nDetails: {error}"
     
     async def reset_session(self):
         """Reset the agent's session for a fresh conversation."""
