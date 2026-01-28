@@ -61,8 +61,62 @@ class Config:
     DATABRICKS_SERVER_HOSTNAME: str = os.getenv("DATABRICKS_SERVER_HOSTNAME", "")
     DATABRICKS_HTTP_PATH: str = os.getenv("DATABRICKS_HTTP_PATH", "")
     DATABRICKS_ACCESS_TOKEN: str = os.getenv("DATABRICKS_ACCESS_TOKEN", "")
+    
+    # Single catalog/schema (legacy support)
     DATABRICKS_CATALOG: str = os.getenv("DATABRICKS_CATALOG", "")
     DATABRICKS_SCHEMA: str = os.getenv("DATABRICKS_SCHEMA", "")
+    
+    # Multiple catalogs/schemas support
+    # Format: "catalog1.schema1,catalog1.schema2,catalog2.schema1" or "catalog1:schema1|schema2,catalog2:schema3"
+    DATABRICKS_CATALOG_SCHEMAS: str = os.getenv("DATABRICKS_CATALOG_SCHEMAS", "")
+    
+    @classmethod
+    def get_catalog_schema_list(cls) -> list[dict]:
+        """
+        Get list of catalog/schema combinations to scan.
+        
+        Returns:
+            List of dicts with 'catalog' and 'schema' keys
+        """
+        result = []
+        
+        # First, check for multi-catalog config
+        if cls.DATABRICKS_CATALOG_SCHEMAS:
+            # Parse format: "catalog1.schema1,catalog1.schema2" or "catalog1:schema1|schema2"
+            for entry in cls.DATABRICKS_CATALOG_SCHEMAS.split(','):
+                entry = entry.strip()
+                if not entry:
+                    continue
+                    
+                if ':' in entry:
+                    # Format: catalog:schema1|schema2|schema3
+                    catalog, schemas = entry.split(':', 1)
+                    for schema in schemas.split('|'):
+                        if schema.strip():
+                            result.append({'catalog': catalog.strip(), 'schema': schema.strip()})
+                elif '.' in entry:
+                    # Format: catalog.schema
+                    parts = entry.split('.', 1)
+                    result.append({'catalog': parts[0].strip(), 'schema': parts[1].strip()})
+        
+        # Fallback to single catalog/schema if no multi-config
+        if not result and cls.DATABRICKS_CATALOG:
+            schemas = cls.DATABRICKS_SCHEMA.split(',') if cls.DATABRICKS_SCHEMA else ['']
+            for schema in schemas:
+                if schema.strip():
+                    result.append({'catalog': cls.DATABRICKS_CATALOG, 'schema': schema.strip()})
+                elif not schema and cls.DATABRICKS_SCHEMA:
+                    result.append({'catalog': cls.DATABRICKS_CATALOG, 'schema': cls.DATABRICKS_SCHEMA})
+        
+        return result
+    
+    @classmethod
+    def get_catalog_schema_display(cls) -> str:
+        """Get formatted display string of all catalog/schema combinations."""
+        items = cls.get_catalog_schema_list()
+        if not items:
+            return "No catalogs/schemas configured"
+        return ", ".join([f"{item['catalog']}.{item['schema']}" for item in items])
     
     # Metadata Cache Settings
     # Set USE_METADATA_CACHE=false to disable caching (faster startup, uses live discovery)

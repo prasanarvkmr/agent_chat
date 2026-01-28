@@ -262,98 +262,98 @@ class MetadataCacheManager:
             try:
                 client = self._get_databricks_client()
                 
-                # Get the default catalog and schema from config
+                # Get all catalog/schema combinations from config
                 from config import config
-                default_catalog = config.DATABRICKS_CATALOG
-                default_schema = config.DATABRICKS_SCHEMA
+                catalog_schema_list = config.get_catalog_schema_list()
                 
                 new_cache = MetadataCache()
                 tables_count = 0
                 columns_count = 0
                 
-                # For now, focus on the configured catalog/schema
-                # Can be extended to scan multiple catalogs
-                catalogs_to_scan = [default_catalog] if default_catalog else []
+                # If no catalog/schemas configured, skip
+                if not catalog_schema_list:
+                    logger.warning("No catalog/schema configured, skipping metadata refresh")
+                    return {
+                        "refreshed": False,
+                        "reason": "No catalog/schema configured",
+                        "last_refresh": self._cache.last_refresh
+                    }
                 
-                for cat_name in catalogs_to_scan:
-                    catalog = CatalogInfo(name=cat_name)
+                # Process each catalog/schema combination
+                for cs in catalog_schema_list:
+                    cat_name = cs['catalog']
+                    schema_name = cs['schema']
                     
-                    # Only load from the configured schema (not all schemas)
-                    # This reduces load time and token consumption
-                    if not default_schema:
-                        logger.warning(f"No schema configured, skipping catalog {cat_name}")
+                    if not cat_name or not schema_name:
                         continue
                     
-                    schema_names = [default_schema]
-                    logger.info(f"Loading metadata from {cat_name}.{default_schema}")
+                    logger.info(f"Loading metadata from {cat_name}.{schema_name}")
                     
-                    for schema_name in schema_names:
-                        if not schema_name:
-                            continue
-                            
-                        schema = SchemaInfo(name=schema_name, catalog=cat_name)
+                    # Create or get catalog
+                    if cat_name not in new_cache.catalogs:
+                        new_cache.catalogs[cat_name] = CatalogInfo(name=cat_name)
+                    catalog = new_cache.catalogs[cat_name]
+                    
+                    # Create schema
+                    schema = SchemaInfo(name=schema_name, catalog=cat_name)
+                    schema.domain = self._infer_domain(schema_name)
+                    
+                    try:
+                        # Get tables in schema
+                        tables = client.get_tables(cat_name, schema_name)
                         
-                        # Infer domain from schema name
-                        schema.domain = self._infer_domain(schema_name)
-                        
-                        try:
-                            # Get tables in schema
-                            tables = client.get_tables(cat_name, schema_name)
-                            
-                            for table_name in tables:
-                                if not table_name:
-                                    continue
-                                    
-                                full_name = f"{cat_name}.{schema_name}.{table_name}"
+                        for table_name in tables:
+                            if not table_name:
+                                continue
                                 
-                                # Get table schema (columns)
-                                try:
-                                    columns_data = client.get_table_schema(
-                                        table_name, cat_name, schema_name
-                                    )
+                            full_name = f"{cat_name}.{schema_name}.{table_name}"
+                            
+                            # Get table schema (columns)
+                            try:
+                                columns_data = client.get_table_schema(
+                                    table_name, cat_name, schema_name
+                                )
+                                
+                                columns = []
+                                for col in columns_data:
+                                    col_name = col.get('col_name', col.get('column_name', ''))
+                                    if col_name and not col_name.startswith('#'):
+                                        columns.append(ColumnInfo(
+                                            name=col_name,
+                                            data_type=col.get('data_type', 'unknown'),
+                                            description=col.get('comment', None),
+                                            nullable=col.get('nullable', True)
+                                        ))
+                                        columns_count += 1
+                                
+                                # Infer table description from columns
+                                table_desc = self._infer_table_description(
+                                    table_name, columns
+                                )
+                                
+                                table = TableInfo(
+                                    name=table_name,
+                                    catalog=cat_name,
+                                    schema=schema_name,
+                                    full_name=full_name,
+                                    description=table_desc,
+                                    columns=columns,
+                                    domain=schema.domain,
+                                    tags=self._infer_tags(table_name, columns)
+                                )
+                                
+                                schema.tables[table_name] = table
+                                tables_count += 1
                                     
-                                    columns = []
-                                    for col in columns_data:
-                                        col_name = col.get('col_name', col.get('column_name', ''))
-                                        if col_name and not col_name.startswith('#'):
-                                            columns.append(ColumnInfo(
-                                                name=col_name,
-                                                data_type=col.get('data_type', 'unknown'),
-                                                description=col.get('comment', None),
-                                                nullable=col.get('nullable', True)
-                                            ))
-                                            columns_count += 1
-                                    
-                                    # Infer table description from columns
-                                    table_desc = self._infer_table_description(
-                                        table_name, columns
-                                    )
-                                    
-                                    table = TableInfo(
-                                        name=table_name,
-                                        catalog=cat_name,
-                                        schema=schema_name,
-                                        full_name=full_name,
-                                        description=table_desc,
-                                        columns=columns,
-                                        domain=schema.domain,
-                                        tags=self._infer_tags(table_name, columns)
-                                    )
-                                    
-                                    schema.tables[table_name] = table
-                                    tables_count += 1
-                                    
-                                except Exception as e:
-                                    logger.warning(f"Failed to get schema for {full_name}: {e}")
-                                    
-                        except Exception as e:
-                            logger.warning(f"Failed to get tables for {cat_name}.{schema_name}: {e}")
-                        
-                        if schema.tables:
-                            catalog.schemas[schema_name] = schema
+                            except Exception as e:
+                                logger.warning(f"Failed to get schema for {full_name}: {e}")
+                                
+                    except Exception as e:
+                        logger.warning(f"Failed to get tables for {cat_name}.{schema_name}: {e}")
                     
-                    if catalog.schemas:
-                        new_cache.catalogs[cat_name] = catalog
+                    # Add schema to catalog if it has tables
+                    if schema.tables:
+                        catalog.schemas[schema_name] = schema
                 
                 # Update cache
                 new_cache.last_refresh = datetime.utcnow().isoformat() + "Z"

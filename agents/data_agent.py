@@ -50,43 +50,57 @@ Analyze contact center operations data to:
 3. Correlate data across multiple systems for root cause analysis
 4. Generate actionable insights for operations teams
 
-## DATA SOURCES (in Databricks)
-You have access to data from these systems - column names may vary, be intelligent about mapping:
+## CRITICAL: AUTONOMOUS DATA DISCOVERY
 
-| System | Purpose | Key Metrics to Look For |
-|--------|---------|------------------------|
-| **Genesys** | Contact center platform | call_volume, queue_time, abandonment_rate, agent_availability, handle_time |
-| **Nuance IVR** | Voice recognition/IVR | recognition_rate, ivr_completion, containment_rate, transfer_rate, error_codes |
-| **Watson IVR** | AI-powered IVR | intent_confidence, dialog_success, fallback_rate, session_duration |
-| **Incidents** | ITSM tickets | severity, priority, affected_service, resolution_time, incident_status |
-| **Call Metrics** | Telephony performance | call_quality, latency, jitter, packet_loss, mos_score |
-| **Solarwinds** | Network/infra monitoring | cpu_usage, memory_usage, disk_io, response_time, availability |
-| **Nexthink** | Endpoint/user experience | device_health, app_crashes, login_time, network_quality |
-| **ThousandEyes** | Network path monitoring | path_latency, loss, jitter, bgp_changes, http_response |
+**YOU MUST DISCOVER THE DATA YOURSELF.** No table structures are predefined for you.
 
-## INTELLIGENT DATA DISCOVERY WORKFLOW
+Your first task for ANY query is to:
+1. **List all available tables** across the configured catalogs/schemas
+2. **Examine table structures** - understand what columns exist and their data types
+3. **Sample the data** - look at actual values to understand the content
+4. **Map to your analysis needs** - figure out which tables/columns are relevant
 
-When you don't know the exact table/column names, follow this approach:
+**DO NOT ASSUME** any specific table names or column names exist. Always verify first.
 
-**Step 1: Discover Available Tables**
-```sql
--- First, list all tables to understand what's available
--- Use list_tables tool or: SHOW TABLES IN catalog.schema
+## POSSIBLE DATA DOMAINS (discover what's actually available)
+
+You might find data related to:
+- **Contact Center**: calls, queues, agents, IVR interactions
+- **Monitoring**: infrastructure metrics, network data, application logs
+- **Incidents**: tickets, alerts, outages, service issues
+- **Telephony**: call quality, voice metrics, SIP data
+- **User Experience**: endpoint data, application performance
+
+The actual table names and column names will vary - YOU must discover them.
+
+## MANDATORY DATA DISCOVERY WORKFLOW
+
+**ALWAYS follow these steps before writing any analysis query:**
+
+### Step 1: List All Tables (REQUIRED FIRST STEP)
+```
+Use the list_tables tool for EACH catalog.schema combination.
+This shows you what data actually exists.
 ```
 
-**Step 2: Understand Table Structure**  
-```sql
--- For each relevant table, examine its columns
--- Use describe_table tool to see column names and types
+### Step 2: Examine Relevant Tables
+```
+Use describe_table tool on tables that might be relevant.
+Look at column names and data types.
 ```
 
-**Step 3: Sample the Data**
+### Step 3: Sample the Data
 ```sql
--- Get a small sample to understand the actual data
 SELECT * FROM catalog.schema.table_name LIMIT 5
 ```
+Look at actual values to understand:
+- What the data represents
+- Date/time formats used
+- Status/category values
+- Numeric ranges
 
-**Step 4: Identify Key Columns** by looking for patterns:
+### Step 4: Identify Key Columns
+Look for patterns in column names:
 - Timestamps: `timestamp`, `created_at`, `event_time`, `datetime`, `date`, `time`
 - Metrics: `value`, `count`, `duration`, `rate`, `score`, `avg`, `total`
 - Status: `status`, `state`, `result`, `outcome`, `success`, `error`
@@ -208,9 +222,31 @@ class DataAgent(BaseAgent):
         """Build the system prompt with optional metadata context."""
         from config import config
         
-        # Get catalog and schema from config
-        catalog = config.DATABRICKS_CATALOG
-        schema = config.DATABRICKS_SCHEMA
+        # Get all catalog/schema combinations
+        catalog_schemas = config.get_catalog_schema_list()
+        
+        # Build the catalog/schema section
+        if catalog_schemas:
+            locations = "\n".join([f"- `{cs['catalog']}.{cs['schema']}`" for cs in catalog_schemas])
+            catalog_section = f"""## DATABRICKS DATA LOCATIONS
+
+**You have access to these catalog/schema combinations:**
+{locations}
+
+**IMPORTANT:** You MUST check tables in ALL these locations.
+Use `list_tables` tool for each catalog.schema to discover available data.
+
+SQL format: `SELECT * FROM catalog.schema.table_name`"""
+        else:
+            # Fallback to single catalog/schema
+            catalog = config.DATABRICKS_CATALOG
+            schema = config.DATABRICKS_SCHEMA
+            catalog_section = f"""## DATABRICKS CONFIGURATION
+
+**Catalog:** `{catalog}`
+**Schema:** `{schema}`
+
+All queries must use: `{catalog}.{schema}.<table_name>`"""
         
         # Optionally load metadata cache
         metadata_section = self._get_metadata_section()
@@ -219,12 +255,7 @@ class DataAgent(BaseAgent):
 
 ---
 
-## DATABRICKS CONFIGURATION
-
-**Catalog:** `{catalog}`
-**Schema:** `{schema}`
-
-All queries must use: `{catalog}.{schema}.<table_name>`
+{catalog_section}
 
 ---
 
