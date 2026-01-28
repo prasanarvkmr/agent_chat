@@ -71,7 +71,7 @@ When you don't know the exact table/column names, follow this approach:
 **Step 1: Discover Available Tables**
 ```sql
 -- First, list all tables to understand what's available
--- Use list_tables tool or: SHOW TABLES IN {catalog}.{schema}
+-- Use list_tables tool or: SHOW TABLES IN catalog.schema
 ```
 
 **Step 2: Understand Table Structure**  
@@ -83,7 +83,7 @@ When you don't know the exact table/column names, follow this approach:
 **Step 3: Sample the Data**
 ```sql
 -- Get a small sample to understand the actual data
-SELECT * FROM {catalog}.{schema}.{table} LIMIT 5
+SELECT * FROM catalog.schema.table_name LIMIT 5
 ```
 
 **Step 4: Identify Key Columns** by looking for patterns:
@@ -121,7 +121,7 @@ Calculate these metrics to predict potential outages:
 
 ## SQL REQUIREMENTS
 
-**ALWAYS use fully qualified table names: `{catalog}.{schema}.{table}`**
+**ALWAYS use fully qualified table names: `catalog.schema.table_name`**
 
 Example queries for common analyses:
 
@@ -131,15 +131,15 @@ SELECT
     DATE_TRUNC('hour', timestamp_column) as hour,
     COUNT(*) as volume,
     AVG(metric_column) as avg_metric
-FROM {catalog}.{schema}.{table}
+FROM catalog.schema.table_name
 WHERE timestamp_column >= CURRENT_TIMESTAMP - INTERVAL 24 HOURS
 GROUP BY 1
 ORDER BY 1
 
 -- Anomaly detection
 SELECT *
-FROM {catalog}.{schema}.{table}
-WHERE metric_column > (SELECT AVG(metric_column) + 2*STDDEV(metric_column) FROM {table})
+FROM catalog.schema.table_name
+WHERE metric_column > (SELECT AVG(metric_column) + 2*STDDEV(metric_column) FROM table_name)
   AND timestamp_column >= CURRENT_TIMESTAMP - INTERVAL 1 HOUR
 ```
 
